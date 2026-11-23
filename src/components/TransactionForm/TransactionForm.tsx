@@ -10,7 +10,7 @@ import {
   toAmountText,
   type KeypadKey,
 } from '../../utilities/amountInput';
-import { getCategoriesOfKind } from '../../utilities/categories';
+import type { CategoryCatalog } from '../../utilities/categories';
 import { getCurrencySymbol } from '../../utilities/money';
 import { getKind } from '../../utilities/transactions';
 import {
@@ -25,7 +25,12 @@ import {
   SegmentedControl,
   type SegmentedOption,
 } from '../SegmentedControl/SegmentedControl';
-import { useSettings, useStore } from '../StoreProvider/StoreProvider';
+import { isCoveredBySheet } from '../Sheet/Sheet';
+import {
+  useCategories,
+  useSettings,
+  useStore,
+} from '../StoreProvider/StoreProvider';
 import { AmountDisplay } from './AmountDisplay';
 import { CategoryGrid } from './CategoryGrid';
 import { DateSelector } from './DateSelector';
@@ -49,11 +54,14 @@ const CONFIRMATION = keyframes`
 `;
 
 const styles = {
+  // Fills the screen exactly. When space runs short, the category grid
+  // shrinks and scrolls before anything else does.
   root: css`
     display: flex;
-    flex: 1 0 auto;
+    flex: 1 1 auto;
     flex-direction: column;
     gap: 12px;
+    min-height: 0;
 
     /* Tighter on short screens, so the form still fits without scrolling. */
     @media (max-height: 700px) {
@@ -121,15 +129,17 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
   onDelete,
 }) => {
   const store = useStore();
+  const categories = useCategories();
   const today = useToday();
   const { currency } = useSettings();
+  const root = React.useRef<HTMLDivElement>(null);
   const [kind, setKind] = React.useState(() =>
-    transaction ? getKind(transaction) : TransactionKind.Expense,
+    transaction ? getKind(transaction, categories) : TransactionKind.Expense,
   );
-  const [categoryId, setCategoryId] = React.useState(
+  const [chosenCategoryId, setCategoryId] = React.useState(
     () =>
       transaction?.categoryId ??
-      getLastUsedCategoryId(store.getState().transactions, kind),
+      getLastUsedCategoryId(store.getState().transactions, kind, categories),
   );
   const [amountText, setAmountText] = React.useState(() =>
     transaction ? toAmountText(transaction.amount) : '',
@@ -140,6 +150,11 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
   const isEditing = transaction !== undefined;
   const amount = parseAmountText(amountText);
   const Heading = isEditing ? 'h2' : 'h1';
+  // The chosen category may have been deleted since it was picked.
+  const categoryId =
+    categories.byId.get(chosenCategoryId)?.kind === kind
+      ? chosenCategoryId
+      : getLastUsedCategoryId(store.getState().transactions, kind, categories);
 
   const handleKey = (key: KeypadKey): void => {
     setAmountText((text) => applyKey(text, key));
@@ -148,7 +163,11 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
   const handleKindChange = (nextKind: TransactionKind): void => {
     setKind(nextKind);
     setCategoryId(
-      getLastUsedCategoryId(store.getState().transactions, nextKind),
+      getLastUsedCategoryId(
+        store.getState().transactions,
+        nextKind,
+        categories,
+      ),
     );
   };
 
@@ -168,7 +187,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
     if (event.metaKey || event.ctrlKey || event.altKey) {
       return;
     }
-    if (isTextEntry(event.target)) {
+    if (isTextEntry(event.target) || isCoveredBySheet(root.current)) {
       return;
     }
     const key = toKeypadKey(event.key);
@@ -192,7 +211,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
   }, []);
 
   return (
-    <div className={styles.root}>
+    <div ref={root} className={styles.root}>
       <header className={styles.header}>
         <Heading className={styles.title}>{getTitle(isEditing, kind)}</Heading>
         <SegmentedControl
@@ -270,11 +289,12 @@ function getSubmitLabel(isEditing: boolean, kind: TransactionKind): string {
 function getLastUsedCategoryId(
   transactions: ReadonlyArray<Transaction>,
   kind: TransactionKind,
+  categories: CategoryCatalog,
 ): number {
   const lastUsed = transactions.find(
-    (transaction) => getKind(transaction) === kind,
+    (transaction) => getKind(transaction, categories) === kind,
   );
-  return lastUsed?.categoryId ?? getCategoriesOfKind(kind)[0].id;
+  return lastUsed?.categoryId ?? categories.byKind[kind][0].id;
 }
 
 function toKeypadKey(key: string): KeypadKey | undefined {

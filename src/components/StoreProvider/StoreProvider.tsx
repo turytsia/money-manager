@@ -1,4 +1,5 @@
 import * as React from 'react';
+import type { CategoryCatalog } from '../../utilities/categories';
 import type { Store } from '../../utilities/store';
 import type { Settings, Transaction } from '../../utilities/types';
 
@@ -31,6 +32,15 @@ export function useTransactions(): ReadonlyArray<Transaction> {
   return React.useSyncExternalStore(
     store.subscribe,
     () => store.getState().transactions,
+  );
+}
+
+/** Built-in and custom categories. Re-renders only when they change. */
+export function useCategories(): CategoryCatalog {
+  const store = useStore();
+  return React.useSyncExternalStore(
+    store.subscribe,
+    () => store.getState().categories,
   );
 }
 

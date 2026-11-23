@@ -180,6 +180,12 @@ export function applyGlobalStyles(): void {
       appearance: none;
     }
 
+    /* The page turns text selection off; iOS needs it on to type in fields. */
+    input {
+      -webkit-user-select: text;
+      user-select: text;
+    }
+
     svg {
       display: block;
       flex-shrink: 0;

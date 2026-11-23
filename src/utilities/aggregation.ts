@@ -1,11 +1,5 @@
-import { CATEGORY_SLOT_COUNT, getCategoriesOfKind } from './categories';
 import { getBucketStart } from './dates';
-import {
-  Granularity,
-  type DayKey,
-  type Transaction,
-  type TransactionKind,
-} from './types';
+import { Granularity, type DayKey, type Transaction } from './types';
 
 // Both caches are keyed by object identity. The transaction list is replaced
 // (never mutated) on every change, so entries can never go stale, and they
@@ -19,19 +13,18 @@ const BUCKET_INDEX_CACHE = new WeakMap<
   Map<Granularity, BucketIndex>
 >();
 
-/** Sums for one period. Both arrays are indexed by category id. */
-export interface BucketTotals {
-  amounts: Array<number>;
-  counts: Array<number>;
-}
-
-/** Totals for each period, keyed by the first day of the period. */
-export type BucketIndex = ReadonlyMap<DayKey, BucketTotals>;
-
 export interface BucketSum {
   amount: number;
   count: number;
 }
+
+/** Sums for one period, by category id. */
+export type BucketTotals = ReadonlyMap<number, Readonly<BucketSum>>;
+
+/** Totals for each period, keyed by the first day of the period. */
+export type BucketIndex = ReadonlyMap<DayKey, BucketTotals>;
+
+type MutableTotals = Map<number, BucketSum>;
 
 /**
  * Totals for every day, week, month or year that has transactions.
@@ -53,36 +46,33 @@ export function getBucketIndex(
   if (cached) {
     return cached;
   }
-  const index = new Map<DayKey, BucketTotals>();
+  const index = new Map<DayKey, MutableTotals>();
   dailyIndex.forEach((dayTotals, day) => {
-    addTotals(getTotals(index, getBucketStart(day, granularity)), dayTotals);
+    const totals = getTotals(index, getBucketStart(day, granularity));
+    dayTotals.forEach(({ amount, count }, categoryId) =>
+      addToTotals(totals, categoryId, amount, count),
+    );
   });
   cache.set(granularity, index);
   return index;
 }
 
-/** Adds up one period for a kind, or for a single category of that kind. */
+/** Adds up one period for the given categories. */
 export function sumBucket(
   totals: BucketTotals | undefined,
-  kind: TransactionKind,
-  categoryId: number | null,
+  categoryIds: Iterable<number>,
 ): BucketSum {
+  let amount = 0;
+  let count = 0;
   if (!totals) {
-    return { amount: 0, count: 0 };
+    return { amount, count };
   }
-  if (categoryId !== null) {
-    return {
-      amount: totals.amounts[categoryId] ?? 0,
-      count: totals.counts[categoryId] ?? 0,
-    };
+  for (const categoryId of categoryIds) {
+    const sum = totals.get(categoryId);
+    amount += sum?.amount ?? 0;
+    count += sum?.count ?? 0;
   }
-  return getCategoriesOfKind(kind).reduce<BucketSum>(
-    (sum, { id }) => ({
-      amount: sum.amount + totals.amounts[id],
-      count: sum.count + totals.counts[id],
-    }),
-    { amount: 0, count: 0 },
-  );
+  return { amount, count };
 }
 
 function getDailyIndex(transactions: ReadonlyArray<Transaction>): BucketIndex {
@@ -90,35 +80,38 @@ function getDailyIndex(transactions: ReadonlyArray<Transaction>): BucketIndex {
   if (cached) {
     return cached;
   }
-  const index = new Map<DayKey, BucketTotals>();
+  const index = new Map<DayKey, MutableTotals>();
   for (const { day, categoryId, amount } of transactions) {
-    const totals = getTotals(index, day);
-    totals.amounts[categoryId] += amount;
-    totals.counts[categoryId] += 1;
+    addToTotals(getTotals(index, day), categoryId, amount, 1);
   }
   DAILY_INDEX_CACHE.set(transactions, index);
   return index;
 }
 
 function getTotals(
-  index: Map<DayKey, BucketTotals>,
+  index: Map<DayKey, MutableTotals>,
   key: DayKey,
-): BucketTotals {
+): MutableTotals {
   const existing = index.get(key);
   if (existing) {
     return existing;
   }
-  const totals: BucketTotals = {
-    amounts: new Array<number>(CATEGORY_SLOT_COUNT).fill(0),
-    counts: new Array<number>(CATEGORY_SLOT_COUNT).fill(0),
-  };
+  const totals: MutableTotals = new Map();
   index.set(key, totals);
   return totals;
 }
 
-function addTotals(target: BucketTotals, source: BucketTotals): void {
-  for (let slot = 0; slot < CATEGORY_SLOT_COUNT; slot += 1) {
-    target.amounts[slot] += source.amounts[slot];
-    target.counts[slot] += source.counts[slot];
+function addToTotals(
+  totals: MutableTotals,
+  categoryId: number,
+  amount: number,
+  count: number,
+): void {
+  const sum = totals.get(categoryId);
+  if (sum) {
+    sum.amount += amount;
+    sum.count += count;
+    return;
   }
+  totals.set(categoryId, { amount, count });
 }

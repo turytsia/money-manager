@@ -1,0 +1,136 @@
+import {
+  Baby,
+  Banknote,
+  Beer,
+  Bike,
+  BookOpen,
+  Briefcase,
+  Bus,
+  Camera,
+  Car,
+  Cat,
+  Clapperboard,
+  Coffee,
+  Coins,
+  CreditCard,
+  Dog,
+  Droplet,
+  Dumbbell,
+  Fuel,
+  Gamepad2,
+  Gift,
+  GraduationCap,
+  HandCoins,
+  Headphones,
+  HeartPulse,
+  House,
+  Landmark,
+  Laptop,
+  Package,
+  Palette,
+  PiggyBank,
+  Pill,
+  Pizza,
+  Plane,
+  ReceiptText,
+  Scissors,
+  Shirt,
+  ShoppingBag,
+  ShoppingCart,
+  Smartphone,
+  Sparkles,
+  Sprout,
+  Stethoscope,
+  Store,
+  Tag,
+  Ticket,
+  TrainFront,
+  Tv,
+  Umbrella,
+  Utensils,
+  Wallet,
+  Wifi,
+  Wine,
+  Wrench,
+  Zap,
+  type LucideIcon,
+} from 'lucide-react';
+
+/**
+ * Icons a category can use, in the order the picker shows them. The names
+ * are saved on the device and in backups, so they must never change.
+ */
+export const CATEGORY_ICONS = {
+  utensils: Utensils,
+  coffee: Coffee,
+  pizza: Pizza,
+  beer: Beer,
+  wine: Wine,
+  'shopping-cart': ShoppingCart,
+  house: House,
+  'receipt-text': ReceiptText,
+  zap: Zap,
+  droplet: Droplet,
+  wifi: Wifi,
+  smartphone: Smartphone,
+  wrench: Wrench,
+  bus: Bus,
+  car: Car,
+  fuel: Fuel,
+  train: TrainFront,
+  plane: Plane,
+  bike: Bike,
+  'heart-pulse': HeartPulse,
+  pill: Pill,
+  stethoscope: Stethoscope,
+  dumbbell: Dumbbell,
+  scissors: Scissors,
+  shirt: Shirt,
+  baby: Baby,
+  dog: Dog,
+  cat: Cat,
+  gift: Gift,
+  clapperboard: Clapperboard,
+  gamepad: Gamepad2,
+  headphones: Headphones,
+  ticket: Ticket,
+  tv: Tv,
+  camera: Camera,
+  palette: Palette,
+  'book-open': BookOpen,
+  'graduation-cap': GraduationCap,
+  briefcase: Briefcase,
+  laptop: Laptop,
+  coins: Coins,
+  banknote: Banknote,
+  wallet: Wallet,
+  'credit-card': CreditCard,
+  'piggy-bank': PiggyBank,
+  landmark: Landmark,
+  'hand-coins': HandCoins,
+  'shopping-bag': ShoppingBag,
+  store: Store,
+  package: Package,
+  tag: Tag,
+  sprout: Sprout,
+  umbrella: Umbrella,
+  sparkles: Sparkles,
+} as const satisfies Readonly<Record<string, LucideIcon>>;
+
+export const DEFAULT_CATEGORY_ICON: CategoryIconName = 'tag';
+
+export const CATEGORY_ICON_NAMES = Object.keys(
+  CATEGORY_ICONS,
+) as ReadonlyArray<CategoryIconName>;
+
+export type CategoryIconName = keyof typeof CATEGORY_ICONS;
+
+export function isCategoryIconName(value: unknown): value is CategoryIconName {
+  return typeof value === 'string' && Object.hasOwn(CATEGORY_ICONS, value);
+}
+
+/** A name for screen readers: "shopping-cart" becomes "Shopping cart". */
+export function getIconLabel(name: CategoryIconName): string {
+  const words = name.replaceAll('-', ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}

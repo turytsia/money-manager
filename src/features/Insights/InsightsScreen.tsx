@@ -9,6 +9,7 @@ import {
 } from '../../components/SegmentedControl/SegmentedControl';
 import {
   useSettings,
+  useCategories,
   useTransactions,
 } from '../../components/StoreProvider/StoreProvider';
 import { getCategory } from '../../utilities/categories';
@@ -86,16 +87,23 @@ const styles = {
  */
 export const InsightsScreen: React.FC = () => {
   const transactions = useTransactions();
+  const categories = useCategories();
   const { currency } = useSettings();
   const today = useToday();
   const [granularity, setGranularity] = React.useState(Granularity.Month);
   const [kind, setKind] = React.useState(TransactionKind.Expense);
   const [selectedStart, setSelectedStart] = React.useState<DayKey | null>(null);
-  const [categoryId, setCategoryId] = React.useState<number | null>(null);
+  const [chosenCategoryId, setCategoryId] = React.useState<number | null>(null);
+  // The filter turns itself off when its category gets deleted.
+  const categoryId =
+    chosenCategoryId !== null && categories.byId.has(chosenCategoryId)
+      ? chosenCategoryId
+      : null;
 
   // Cheap to run on every render: the heavy sums are cached per data set.
   const insights = buildInsights({
     transactions,
+    categories,
     granularity,
     kind,
     selectedStart,
@@ -157,7 +165,9 @@ export const InsightsScreen: React.FC = () => {
         <PeriodSummary
           label={insights.label}
           filterLabel={
-            categoryId === null ? undefined : getCategory(categoryId).label
+            categoryId === null
+              ? undefined
+              : getCategory(categories, categoryId).label
           }
           total={insights.total}
           previousTotal={insights.previousTotal}

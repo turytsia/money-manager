@@ -14,6 +14,7 @@ import { CURRENCIES } from '../../utilities/money';
 import { SCREEN_STYLE } from '../../utilities/styles';
 import { ThemePreference } from '../../utilities/types';
 import { BackupSection } from './BackupSection';
+import { CategoriesSection } from './CategoriesSection';
 import { EraseSection } from './EraseSection';
 import { SettingsSection } from './SettingsSection';
 import { StorageMeter } from './StorageMeter';
@@ -122,6 +123,7 @@ export const SettingsScreen: React.FC = () => {
           This only changes the symbol. Amounts are not converted.
         </p>
       </SettingsSection>
+      <CategoriesSection />
       <SettingsSection title='Storage'>
         <StorageMeter />
       </SettingsSection>

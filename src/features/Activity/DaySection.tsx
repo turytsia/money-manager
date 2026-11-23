@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { css, cx } from '@emotion/css';
 import { CategoryIcon } from '../../components/CategoryIcon/CategoryIcon';
-import { getCategory } from '../../utilities/categories';
+import { getCategory, type CategoryCatalog } from '../../utilities/categories';
 import { formatDay } from '../../utilities/dates';
 import { formatMoney } from '../../utilities/money';
 import { CARD_STYLE, TABULAR_STYLE } from '../../utilities/styles';
@@ -88,12 +88,14 @@ export interface DaySectionProps {
   group: DayGroup;
   today: DayKey;
   currency: string;
+  categories: CategoryCatalog;
   onSelect: (transaction: Transaction) => void;
 }
 
 interface TransactionRowProps {
   transaction: Transaction;
   currency: string;
+  categories: CategoryCatalog;
   onSelect: (transaction: Transaction) => void;
 }
 
@@ -102,6 +104,7 @@ export const DaySection: React.FC<DaySectionProps> = ({
   group,
   today,
   currency,
+  categories,
   onSelect,
 }) => {
   return (
@@ -125,6 +128,7 @@ export const DaySection: React.FC<DaySectionProps> = ({
             key={transaction.id}
             transaction={transaction}
             currency={currency}
+            categories={categories}
             onSelect={onSelect}
           />
         ))}
@@ -136,9 +140,10 @@ export const DaySection: React.FC<DaySectionProps> = ({
 const TransactionRow: React.FC<TransactionRowProps> = ({
   transaction,
   currency,
+  categories,
   onSelect,
 }) => {
-  const category = getCategory(transaction.categoryId);
+  const category = getCategory(categories, transaction.categoryId);
   const isIncome = category.kind === TransactionKind.Income;
   const amount = `${isIncome ? '+' : ''}${formatMoney(transaction.amount, currency)}`;
 

@@ -1,3 +1,4 @@
+import type { CategoryCatalog } from '../../utilities/categories';
 import { getKind } from '../../utilities/transactions';
 import {
   TransactionKind,
@@ -18,6 +19,7 @@ export interface DayGroup {
  */
 export function groupByDay(
   transactions: ReadonlyArray<Transaction>,
+  categories: CategoryCatalog,
 ): Array<DayGroup> {
   const groups: Array<DayGroup> = [];
   for (const transaction of transactions) {
@@ -30,7 +32,7 @@ export function groupByDay(
       groups.push(group);
     }
     group.transactions.push(transaction);
-    if (getKind(transaction) === TransactionKind.Expense) {
+    if (getKind(transaction, categories) === TransactionKind.Expense) {
       group.expenseTotal += transaction.amount;
     } else {
       group.incomeTotal += transaction.amount;

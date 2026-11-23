@@ -5,6 +5,7 @@ import { Button } from '../../components/Button/Button';
 import { EmptyState } from '../../components/EmptyState/EmptyState';
 import { ScreenHeader } from '../../components/ScreenHeader/ScreenHeader';
 import {
+  useCategories,
   useSettings,
   useTransactions,
 } from '../../components/StoreProvider/StoreProvider';
@@ -41,14 +42,18 @@ interface LoadMoreProps {
 /** Every transaction, newest first, grouped by day. Tap one to edit it. */
 export const ActivityScreen: React.FC = () => {
   const transactions = useTransactions();
+  const categories = useCategories();
   const { currency } = useSettings();
   const today = useToday();
   const [visibleDayCount, setVisibleDayCount] = React.useState(PAGE_SIZE);
   const [editedTransaction, setEditedTransaction] =
     React.useState<Transaction | null>(null);
 
-  // Grouping reads every transaction, so it only reruns when they change.
-  const groups = React.useMemo(() => groupByDay(transactions), [transactions]);
+  // Grouping reads every transaction, so it only reruns when data changes.
+  const groups = React.useMemo(
+    () => groupByDay(transactions, categories),
+    [transactions, categories],
+  );
 
   return (
     <section aria-label='Activity' className={SCREEN_STYLE}>
@@ -72,6 +77,7 @@ export const ActivityScreen: React.FC = () => {
           group={group}
           today={today}
           currency={currency}
+          categories={categories}
           onSelect={setEditedTransaction}
         />
       ))}

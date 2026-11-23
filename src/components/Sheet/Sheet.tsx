@@ -41,12 +41,13 @@ const styles = {
     position: fixed;
     left: 0;
     right: 0;
-    bottom: 0;
+    /* Set at startup, so the sheet sits above the on-screen keyboard. */
+    bottom: var(--keyboard-inset, 0px);
     z-index: 41;
     display: flex;
     flex-direction: column;
     max-width: var(--content-width);
-    max-height: calc(100dvh - var(--safe-top) - 12px);
+    max-height: calc(var(--visible-height, 100dvh) - var(--safe-top) - 12px);
     margin: 0 auto;
     padding: 8px 16px calc(var(--safe-bottom) + 16px);
     overflow-y: auto;
@@ -74,6 +75,8 @@ const styles = {
   `,
 };
 
+const DIALOG_SELECTOR = '[role="dialog"]';
+
 const SheetContext = React.createContext<(() => void) | null>(null);
 
 export interface SheetProps {
@@ -97,11 +100,13 @@ export const Sheet: React.FC<SheetProps> = ({
   children,
 }) => {
   const [isClosing, setIsClosing] = React.useState(false);
+  const panel = React.useRef<HTMLDivElement>(null);
   const requestClose = React.useCallback(() => setIsClosing(true), []);
 
   React.useEffect(() => {
+    // With sheets stacked, Escape closes only the top one.
     const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') {
+      if (event.key === 'Escape' && !isCoveredBySheet(panel.current)) {
         requestClose();
       }
     };
@@ -122,6 +127,7 @@ export const Sheet: React.FC<SheetProps> = ({
         onClick={requestClose}
       />
       <div
+        ref={panel}
         role='dialog'
         aria-modal='true'
         aria-label={title}
@@ -147,4 +153,11 @@ export function useSheetClose(): () => void {
     throw new Error('useSheetClose must be used within a Sheet');
   }
   return requestClose;
+}
+
+/** True when an open sheet is on top of the given element. */
+export function isCoveredBySheet(element: Element | null): boolean {
+  const dialogs = document.querySelectorAll(DIALOG_SELECTOR);
+  const topDialog = dialogs.item(dialogs.length - 1);
+  return topDialog !== null && !topDialog.contains(element);
 }

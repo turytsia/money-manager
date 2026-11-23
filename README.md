@@ -3,6 +3,7 @@
 A fast, private expense tracker that installs on an iPhone from the browser.
 
 - **Quick entry.** The app opens on the keypad. Type an amount, pick a category, tap Add.
+- **Custom categories.** Add your own, with a name and an icon, right from the entry screen or in Settings.
 - **Insights.** Totals by day, week, month and year, split by category.
 - **Private and offline.** Data is stored on the device only. No account, no server.
 - **Backup.** Export everything to a file and import it again on any device.
@@ -49,26 +50,44 @@ so 5 MB is room for around 100,000 transactions.
 All reading and writing goes through `src/utilities/storage.ts` and `src/utilities/store.ts`.
 Those two files are the only ones that need to change to move to a different kind of storage.
 
+### Categories
+
+Built-in categories are fixed. Custom categories have ids from 1000 up and are saved
+under their own key. Deleting a custom category moves its transactions to **Other**
+of the same type (expense or income).
+
 ### Backup file format
 
-Backups are plain JSON:
+Backups are plain JSON. Transactions refer to built-in categories by name (such as
+`groceries`) and to custom ones by the `key` listed under `categories`:
 
 ```json
 {
   "app": "money-manager",
-  "version": 1,
+  "version": 2,
   "exportedAt": "2026-11-23T20:15:00.000Z",
   "currency": "EUR",
+  "categories": [
+    {
+      "key": "custom-1000",
+      "name": "Coffee",
+      "kind": "expense",
+      "icon": "coffee"
+    }
+  ],
   "transactions": [
     {
       "id": "mhr2k3ab",
       "date": "2026-11-23",
-      "category": "groceries",
-      "amount": 12.5
+      "category": "custom-1000",
+      "amount": 4.5
     }
   ]
 }
 ```
+
+On import, a custom category with the same name and type as one that already exists
+is merged into it. Version 1 files, made before custom categories existed, still import.
 
 ## Project layout
 

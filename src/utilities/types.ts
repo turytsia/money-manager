@@ -1,3 +1,6 @@
+import type { CategoryCatalog } from './categories';
+import type { CategoryIconName } from './categoryIcons';
+
 export enum TransactionKind {
   Expense = 'expense',
   Income = 'income',
@@ -46,7 +49,24 @@ export interface Settings {
   theme: ThemePreference;
 }
 
+/** A category the user made, in the form it is saved in. */
+export interface CustomCategory {
+  id: number;
+  kind: TransactionKind;
+  label: string;
+  icon: CategoryIconName;
+}
+
+/** A custom category being created (id is null) or edited. */
+export interface CategoryDraft {
+  id: number | null;
+  kind: TransactionKind;
+  label: string;
+  icon: CategoryIconName;
+}
+
 export interface AppState {
   transactions: ReadonlyArray<Transaction>;
   settings: Settings;
+  categories: CategoryCatalog;
 }

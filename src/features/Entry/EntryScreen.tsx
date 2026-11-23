@@ -44,7 +44,7 @@ export const EntryScreen: React.FC = () => {
     }
     const amount = formatMoney(input.amount, currency);
     showToast({
-      message: `Added ${amount} to ${getCategory(input.categoryId).label}`,
+      message: `Added ${amount} to ${getCategory(store.getState().categories, transaction.categoryId).label}`,
       actionLabel: 'Undo',
       onAction: () => store.deleteTransaction(transaction.id),
     });

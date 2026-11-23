@@ -159,6 +159,79 @@ describe('App', () => {
       expect(screen.getByRole('combobox')).toHaveValue('EUR');
     });
   });
+
+  describe('when a category is created while adding an expense', () => {
+    it('should select the new category and save the expense in it', async () => {
+      const user = userEvent.setup();
+      render(<App />, { wrapper: Providers });
+
+      await user.click(screen.getByRole('button', { name: 'New category' }));
+      const dialog = screen.getByRole('dialog', { name: 'New category' });
+      await user.type(within(dialog).getByLabelText('Name'), 'Pets');
+      await user.click(within(dialog).getByRole('radio', { name: 'Dog' }));
+      await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+      fireEvent.animationEnd(dialog);
+
+      expect(screen.getByRole('radio', { name: 'Pets' })).toBeChecked();
+
+      await user.click(screen.getByRole('button', { name: '7' }));
+      await user.click(screen.getByRole('button', { name: 'Add expense' }));
+
+      expect(screen.getByText('Added $7 to Pets')).toBeVisible();
+      expect(localStorage.getItem('mm:categories')).toBe(
+        '[{"id":1000,"kind":"expense","label":"Pets","icon":"dog"}]',
+      );
+      expect(
+        JSON.parse(localStorage.getItem('mm:tx:202611') ?? '')[0].slice(1),
+      ).toEqual([23, 1000, 700]);
+    });
+
+    it('should not allow a name that is already taken', async () => {
+      const user = userEvent.setup();
+      render(<App />, { wrapper: Providers });
+
+      await user.click(screen.getByRole('button', { name: 'New category' }));
+      const dialog = screen.getByRole('dialog', { name: 'New category' });
+      await user.type(within(dialog).getByLabelText('Name'), 'food');
+      await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+
+      expect(within(dialog).getByRole('alert')).toHaveTextContent(
+        'A category with this name already exists',
+      );
+      expect(localStorage.getItem('mm:categories')).toBeNull();
+    });
+  });
+
+  describe('when a custom category is deleted in Settings', () => {
+    it('should move its transactions to Other', async () => {
+      const user = userEvent.setup();
+      localStorage.setItem(
+        'mm:categories',
+        '[{"id":1000,"kind":"expense","label":"Pets","icon":"dog"}]',
+      );
+      localStorage.setItem('mm:tx:202611', '[["a1",23,1000,700]]');
+      render(<App />, { wrapper: Providers });
+
+      await user.click(screen.getByRole('button', { name: 'Settings' }));
+      await user.click(screen.getByRole('button', { name: /^Pets/ }));
+      const dialog = screen.getByRole('dialog', { name: 'Edit category' });
+      await user.click(
+        within(dialog).getByRole('button', { name: 'Delete category' }),
+      );
+
+      expect(
+        within(dialog).getByText(/Its 1 transaction will move to Other/),
+      ).toBeVisible();
+
+      await user.click(
+        within(dialog).getByRole('button', { name: 'Delete category' }),
+      );
+
+      expect(screen.getByText('Deleted Pets')).toBeVisible();
+      expect(localStorage.getItem('mm:categories')).toBeNull();
+      expect(localStorage.getItem('mm:tx:202611')).toBe('[["a1",23,9,700]]');
+    });
+  });
 });
 
 async function addExpense(user: UserEvent): Promise<void> {

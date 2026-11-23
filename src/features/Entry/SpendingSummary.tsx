@@ -1,10 +1,12 @@
 import * as React from 'react';
 import { css } from '@emotion/css';
 import {
+  useCategories,
   useSettings,
   useTransactions,
 } from '../../components/StoreProvider/StoreProvider';
 import { getBucketIndex, sumBucket } from '../../utilities/aggregation';
+import type { CategoryCatalog } from '../../utilities/categories';
 import { formatMonth, getBucketStart } from '../../utilities/dates';
 import { formatMoney } from '../../utilities/money';
 import { TABULAR_STYLE } from '../../utilities/styles';
@@ -35,11 +37,17 @@ const styles = {
 /** What has been spent today and this month, shown while adding. */
 export const SpendingSummary: React.FC = () => {
   const transactions = useTransactions();
+  const categories = useCategories();
   const { currency } = useSettings();
   const today = useToday();
 
-  const spentToday = getSpent(transactions, Granularity.Day, today);
-  const spentThisMonth = getSpent(transactions, Granularity.Month, today);
+  const spentToday = getSpent(transactions, categories, Granularity.Day, today);
+  const spentThisMonth = getSpent(
+    transactions,
+    categories,
+    Granularity.Month,
+    today,
+  );
 
   return (
     <p className={styles.root}>
@@ -64,11 +72,15 @@ export const SpendingSummary: React.FC = () => {
 
 function getSpent(
   transactions: ReadonlyArray<Transaction>,
+  categories: CategoryCatalog,
   granularity: Granularity,
   today: DayKey,
 ): number {
   const totals = getBucketIndex(transactions, granularity).get(
     getBucketStart(today, granularity),
   );
-  return sumBucket(totals, TransactionKind.Expense, null).amount;
+  const expenseIds = categories.byKind[TransactionKind.Expense].map(
+    ({ id }) => id,
+  );
+  return sumBucket(totals, expenseIds).amount;
 }

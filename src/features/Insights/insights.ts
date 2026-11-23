@@ -3,7 +3,7 @@ import {
   sumBucket,
   type BucketTotals,
 } from '../../utilities/aggregation';
-import { getCategoriesOfKind, type Category } from '../../utilities/categories';
+import type { Category, CategoryCatalog } from '../../utilities/categories';
 import {
   countBucketsBetween,
   countElapsedDays,
@@ -37,6 +37,7 @@ const EMPTY_SCALE_MAX = 100;
 
 export interface InsightsQuery {
   transactions: ReadonlyArray<Transaction>;
+  categories: CategoryCatalog;
   granularity: Granularity;
   kind: TransactionKind;
   /** First day of the chosen period, or null for the one containing today. */
@@ -92,6 +93,7 @@ export interface Insights {
  */
 export function buildInsights({
   transactions,
+  categories,
   granularity,
   kind,
   selectedStart,
@@ -99,6 +101,9 @@ export function buildInsights({
   today,
 }: InsightsQuery): Insights {
   const index = getBucketIndex(transactions, granularity);
+  const kindCategories = categories.byKind[kind];
+  const categoryIds =
+    categoryId === null ? kindCategories.map(({ id }) => id) : [categoryId];
   const currentStart = getBucketStart(today, granularity);
   const starts = [...index.keys()];
   const earliestStart = starts.reduce(
@@ -131,14 +136,14 @@ export function buildInsights({
     );
     return {
       start,
-      amount: sumBucket(index.get(start), kind, categoryId).amount,
+      amount: sumBucket(index.get(start), categoryIds).amount,
       tick: formatBucketTick(start, granularity),
       label: formatBucket(start, granularity, today),
     };
   });
 
   const selectedTotals = index.get(selected);
-  const { amount: total, count } = sumBucket(selectedTotals, kind, categoryId);
+  const { amount: total, count } = sumBucket(selectedTotals, categoryIds);
   const previousStart = shiftBucket(selected, granularity, -1);
 
   return {
@@ -153,12 +158,12 @@ export function buildInsights({
     scaleMax: getNiceCeiling(Math.max(...bars.map(({ amount }) => amount))),
     total,
     count,
-    previousTotal: sumBucket(index.get(previousStart), kind, categoryId).amount,
+    previousTotal: sumBucket(index.get(previousStart), categoryIds).amount,
     averagePerDay:
       granularity === Granularity.Day
         ? null
         : Math.round(total / countElapsedDays(selected, granularity, today)),
-    breakdown: getBreakdown(selectedTotals, kind),
+    breakdown: getBreakdown(selectedTotals, kindCategories),
     canGoBack: selected > earliestStart,
     canGoForward: selected < latestStart,
   };
@@ -176,19 +181,23 @@ export function getNiceCeiling(value: number): number {
 
 function getBreakdown(
   totals: BucketTotals | undefined,
-  kind: TransactionKind,
+  kindCategories: ReadonlyArray<Category>,
 ): Array<BreakdownItem> {
   if (!totals) {
     return [];
   }
-  const kindTotal = sumBucket(totals, kind, null).amount;
-  return getCategoriesOfKind(kind)
-    .map((category) => ({
-      category,
-      amount: totals.amounts[category.id],
-      count: totals.counts[category.id],
-      share: totals.amounts[category.id] / kindTotal,
-    }))
-    .filter(({ amount }) => amount > 0)
+  const kindTotal = sumBucket(
+    totals,
+    kindCategories.map(({ id }) => id),
+  ).amount;
+  return kindCategories
+    .flatMap((category) => {
+      const sum = totals.get(category.id);
+      if (!sum || sum.amount === 0) {
+        return [];
+      }
+      const { amount, count } = sum;
+      return [{ category, amount, count, share: amount / kindTotal }];
+    })
     .sort((a, b) => b.amount - a.amount);
 }

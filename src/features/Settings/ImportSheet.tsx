@@ -61,14 +61,7 @@ const ImportOptions: React.FC<ImportOptionsProps> = ({ backup }) => {
   const foundText = formatCount(backup.transactions.length, 'transaction');
 
   const runImport = (mode: ImportMode): void => {
-    // The backup's currency only applies when its data becomes all the data.
-    const currency =
-      mode === ImportMode.Replace || !hasData ? backup.currency : undefined;
-    const isImported = store.importTransactions(
-      backup.transactions,
-      mode,
-      currency,
-    );
+    const isImported = store.importBackup(backup, mode);
     closeSheet();
     showToast(
       isImported
@@ -84,7 +77,7 @@ const ImportOptions: React.FC<ImportOptionsProps> = ({ backup }) => {
     <>
       <h2 className={styles.title}>Import {foundText}?</h2>
       <p className={styles.description}>
-        {getDescription(hasData, backup.skippedCount)}
+        {getDescription(hasData, backup.categories.length, backup.skippedCount)}
       </p>
       <div className={styles.actions}>
         <Button
@@ -111,13 +104,21 @@ const ImportOptions: React.FC<ImportOptionsProps> = ({ backup }) => {
   );
 };
 
-function getDescription(hasData: boolean, skippedCount: number): string {
+function getDescription(
+  hasData: boolean,
+  categoryCount: number,
+  skippedCount: number,
+): string {
+  const choice = hasData
+    ? 'Merging keeps what is on this device and adds the backup to it. Replacing removes what is on this device first.'
+    : 'They will be added to this device.';
+  const categories =
+    categoryCount > 0
+      ? ` The backup also has ${formatCount(categoryCount, 'custom category', 'custom categories')}; ones with a name you already use are combined.`
+      : '';
   const skipped =
     skippedCount > 0
       ? ` ${formatCount(skippedCount, 'item')} in the file could not be read and will be skipped.`
       : '';
-  const choice = hasData
-    ? 'Merging keeps what is on this device and adds the backup to it. Replacing removes what is on this device first.'
-    : 'They will be added to this device.';
-  return choice + skipped;
+  return choice + categories + skipped;
 }

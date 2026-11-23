@@ -1,7 +1,7 @@
-import { getCategory, isKnownCategoryId } from './categories';
-import { getMonthKey, isValidDayKey } from './dates';
+import { getCategory, type CategoryCatalog } from './categories';
+import { getMonthKey } from './dates';
 import { MAX_AMOUNT } from './money';
-import { TransactionKind, type Transaction } from './types';
+import type { Transaction, TransactionKind } from './types';
 
 const ID_PATTERN = /^[0-9a-z]{1,16}$/;
 const ID_RADIX = 36;
@@ -62,18 +62,8 @@ export function createTransactionId(
   return candidate.toString(ID_RADIX);
 }
 
-export function isValidTransaction(value: unknown): value is Transaction {
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-  const { id, day, categoryId, amount } = value as Partial<Transaction>;
-  return (
-    typeof id === 'string' &&
-    ID_PATTERN.test(id) &&
-    isValidDayKey(day) &&
-    isKnownCategoryId(categoryId) &&
-    isValidAmount(amount)
-  );
+export function isValidTransactionId(value: unknown): value is string {
+  return typeof value === 'string' && ID_PATTERN.test(value);
 }
 
 export function isValidAmount(amount: unknown): amount is number {
@@ -85,8 +75,11 @@ export function isValidAmount(amount: unknown): amount is number {
   );
 }
 
-export function getKind(transaction: Transaction): TransactionKind {
-  return getCategory(transaction.categoryId).kind;
+export function getKind(
+  transaction: Transaction,
+  categories: CategoryCatalog,
+): TransactionKind {
+  return getCategory(categories, transaction.categoryId).kind;
 }
 
 export function getMonthKeys(

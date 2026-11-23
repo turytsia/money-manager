@@ -3,6 +3,7 @@ import { css } from '@emotion/css';
 import { Button, ButtonVariant } from '../../components/Button/Button';
 import { Sheet, useSheetClose } from '../../components/Sheet/Sheet';
 import {
+  useCategories,
   useStore,
   useTransactions,
 } from '../../components/StoreProvider/StoreProvider';
@@ -33,24 +34,29 @@ const styles = {
 
 interface EraseConfirmationProps {
   transactionCount: number;
+  categoryCount: number;
 }
 
 export const EraseSection: React.FC = () => {
   const transactionCount = useTransactions().length;
+  const categoryCount = useCategories().customCategories.length;
   const [isConfirming, setIsConfirming] = React.useState(false);
 
   return (
     <SettingsSection title='Danger zone'>
       <Button
         variant={ButtonVariant.Danger}
-        disabled={transactionCount === 0}
+        disabled={transactionCount === 0 && categoryCount === 0}
         onClick={() => setIsConfirming(true)}
       >
         Erase all data
       </Button>
       {isConfirming && (
         <Sheet title='Erase all data' onClose={() => setIsConfirming(false)}>
-          <EraseConfirmation transactionCount={transactionCount} />
+          <EraseConfirmation
+            transactionCount={transactionCount}
+            categoryCount={categoryCount}
+          />
         </Sheet>
       )}
     </SettingsSection>
@@ -59,13 +65,18 @@ export const EraseSection: React.FC = () => {
 
 const EraseConfirmation: React.FC<EraseConfirmationProps> = ({
   transactionCount,
+  categoryCount,
 }) => {
   const store = useStore();
   const showToast = useToast();
   const closeSheet = useSheetClose();
+  const categoriesText =
+    categoryCount > 0
+      ? ` and ${formatCount(categoryCount, 'custom category', 'custom categories')}`
+      : '';
 
   const handleErase = (): void => {
-    const isErased = store.eraseTransactions();
+    const isErased = store.eraseData();
     closeSheet();
     showToast(
       isErased
@@ -78,9 +89,9 @@ const EraseConfirmation: React.FC<EraseConfirmationProps> = ({
     <>
       <h2 className={styles.title}>Erase all data?</h2>
       <p className={styles.description}>
-        This removes {formatCount(transactionCount, 'transaction')} from this
-        device. It cannot be undone, so export a backup first if you might want
-        them back.
+        This removes {formatCount(transactionCount, 'transaction')}
+        {categoriesText} from this device. Settings are kept. It cannot be
+        undone, so export a backup first if you might want them back.
       </p>
       <div className={styles.actions}>
         <Button variant={ButtonVariant.Danger} isLarge onClick={handleErase}>

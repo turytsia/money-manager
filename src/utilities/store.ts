@@ -1,14 +1,27 @@
+import { resolveBackup, type ParsedBackup } from './backup';
+import {
+  createCatalog,
+  createCategoryId,
+  getFallbackCategory,
+  normalizeLabel,
+  type CategoryCatalog,
+} from './categories';
 import { getMonthKey } from './dates';
 import { guessCurrency, isSupportedCurrency } from './money';
 import {
+  getAllMonthEntries,
+  getCategoryEntries,
+  getMonthEntries,
+  getSettingsEntries,
+  loadCustomCategories,
   loadSettings,
   loadTransactions,
-  replaceTransactions,
-  saveMonths,
-  saveSettings,
+  writeEntries,
+  type StorageEntries,
 } from './storage';
 import {
   createTransactionId,
+  getMonthKeys,
   mergeTransactions,
   removeTransaction,
   sortTransactions,
@@ -17,7 +30,10 @@ import {
 import {
   ImportMode,
   ThemePreference,
+  TransactionKind,
   type AppState,
+  type CategoryDraft,
+  type CustomCategory,
   type Settings,
   type Transaction,
   type TransactionInput,
@@ -41,12 +57,16 @@ export interface Store {
   /** Updates a transaction, or puts back one that was deleted. */
   saveTransaction: (transaction: Transaction) => boolean;
   deleteTransaction: (id: string) => boolean;
-  importTransactions: (
-    transactions: ReadonlyArray<Transaction>,
-    mode: ImportMode,
-    currency: string | undefined,
-  ) => boolean;
-  eraseTransactions: () => boolean;
+  /**
+   * Creates a custom category, or updates the name and icon of one. Returns
+   * it, or undefined when it could not be saved.
+   */
+  saveCategory: (draft: CategoryDraft) => CustomCategory | undefined;
+  /** Deletes a custom category and moves its transactions to Other. */
+  deleteCategory: (id: number) => boolean;
+  importBackup: (backup: ParsedBackup, mode: ImportMode) => boolean;
+  /** Removes all transactions and custom categories. Settings are kept. */
+  eraseData: () => boolean;
   updateSettings: (changes: Partial<Settings>) => boolean;
 }
 
@@ -60,17 +80,16 @@ export function createStore(): Store {
   }
 
   function commit(
-    transactions: ReadonlyArray<Transaction>,
-    write: () => void,
-    settings: Settings = state.settings,
+    changes: Partial<AppState>,
+    ...entries: Array<StorageEntries>
   ): boolean {
     try {
-      write();
+      writeEntries(...entries);
     } catch (error) {
       console.error('Saving failed', error);
       return false;
     }
-    setState({ transactions, settings });
+    setState({ ...state, ...changes });
     return true;
   }
 
@@ -86,17 +105,19 @@ export function createStore(): Store {
       };
     },
     addTransaction: (input) => {
-      const transaction: Transaction = {
-        ...input,
-        id: createTransactionId(Date.now(), state.transactions),
-      };
+      const transaction = withKnownCategory(
+        { ...input, id: createTransactionId(Date.now(), state.transactions) },
+        state.categories,
+      );
       const transactions = upsertTransaction(state.transactions, transaction);
-      const isSaved = commit(transactions, () =>
-        saveMonths(transactions, [getMonthKey(transaction.day)]),
+      const isSaved = commit(
+        { transactions },
+        getMonthEntries(transactions, [getMonthKey(transaction.day)]),
       );
       return isSaved ? transaction : undefined;
     },
-    saveTransaction: (transaction) => {
+    saveTransaction: (changed) => {
+      const transaction = withKnownCategory(changed, state.categories);
       const previous = state.transactions.find(
         ({ id }) => id === transaction.id,
       );
@@ -105,7 +126,7 @@ export function createStore(): Store {
         monthKeys.add(getMonthKey(previous.day));
       }
       const transactions = upsertTransaction(state.transactions, transaction);
-      return commit(transactions, () => saveMonths(transactions, monthKeys));
+      return commit({ transactions }, getMonthEntries(transactions, monthKeys));
     },
     deleteTransaction: (id) => {
       const existing = state.transactions.find(
@@ -115,46 +136,128 @@ export function createStore(): Store {
         return true;
       }
       const transactions = removeTransaction(state.transactions, id);
-      return commit(transactions, () =>
-        saveMonths(transactions, [getMonthKey(existing.day)]),
-      );
-    },
-    importTransactions: (incoming, mode, currency) => {
-      const transactions =
-        mode === ImportMode.Replace
-          ? sortTransactions(incoming)
-          : mergeTransactions(state.transactions, incoming);
-      const settings = currency
-        ? { ...state.settings, currency }
-        : state.settings;
       return commit(
-        transactions,
-        () => {
-          replaceTransactions(transactions);
-          saveSettings(settings);
-        },
-        settings,
+        { transactions },
+        getMonthEntries(transactions, [getMonthKey(existing.day)]),
       );
     },
-    eraseTransactions: () => commit([], () => replaceTransactions([])),
+    saveCategory: (draft) => {
+      const current = state.categories.customCategories;
+      const existing = current.find(({ id }) => id === draft.id);
+      if (draft.id !== null && !existing) {
+        return undefined;
+      }
+      const label = normalizeLabel(draft.label);
+      const category: CustomCategory = existing
+        ? { ...existing, label, icon: draft.icon }
+        : {
+            id: createCategoryId(current),
+            kind: draft.kind,
+            label,
+            icon: draft.icon,
+          };
+      const customCategories = existing
+        ? current.map((item) => (item.id === category.id ? category : item))
+        : [...current, category];
+      const isSaved = commit(
+        { categories: createCatalog(customCategories) },
+        getCategoryEntries(customCategories),
+      );
+      return isSaved ? category : undefined;
+    },
+    deleteCategory: (id) => {
+      const existing = state.categories.customCategories.find(
+        (category) => category.id === id,
+      );
+      if (!existing) {
+        return true;
+      }
+      const fallbackId = getFallbackCategory(existing.kind).id;
+      const moved = state.transactions.filter(
+        ({ categoryId }) => categoryId === id,
+      );
+      const transactions = state.transactions.map((transaction) =>
+        transaction.categoryId === id
+          ? { ...transaction, categoryId: fallbackId }
+          : transaction,
+      );
+      const customCategories = state.categories.customCategories.filter(
+        (category) => category.id !== id,
+      );
+      return commit(
+        { transactions, categories: createCatalog(customCategories) },
+        getMonthEntries(transactions, getMonthKeys(moved)),
+        getCategoryEntries(customCategories),
+      );
+    },
+    importBackup: (backup, mode) => {
+      const isReplacing = mode === ImportMode.Replace;
+      const resolved = resolveBackup(
+        backup,
+        isReplacing ? createCatalog([]) : state.categories,
+      );
+      const transactions = isReplacing
+        ? sortTransactions(resolved.transactions)
+        : mergeTransactions(state.transactions, resolved.transactions);
+      // The backup's currency only applies when its data becomes all the data.
+      const adoptsCurrency = isReplacing || state.transactions.length === 0;
+      const settings =
+        adoptsCurrency && backup.currency
+          ? { ...state.settings, currency: backup.currency }
+          : state.settings;
+      return commit(
+        {
+          transactions,
+          settings,
+          categories: createCatalog(resolved.customCategories),
+        },
+        getAllMonthEntries(transactions),
+        getCategoryEntries(resolved.customCategories),
+        getSettingsEntries(settings),
+      );
+    },
+    eraseData: () =>
+      commit(
+        { transactions: [], categories: createCatalog([]) },
+        getAllMonthEntries([]),
+        getCategoryEntries([]),
+      ),
     updateSettings: (changes) => {
       const settings = { ...state.settings, ...changes };
-      return commit(state.transactions, () => saveSettings(settings), settings);
+      return commit({ settings }, getSettingsEntries(settings));
     },
   };
 }
 
 function readState(): AppState {
   try {
+    const categories = createCatalog(loadCustomCategories());
     return {
-      transactions: loadTransactions(),
+      transactions: loadTransactions().map((transaction) =>
+        withKnownCategory(transaction, categories),
+      ),
       settings: resolveSettings(loadSettings()),
+      categories,
     };
   } catch (error) {
     // Storage can be blocked entirely, for example in some private modes.
     console.error('Reading saved data failed', error);
-    return { transactions: [], settings: resolveSettings({}) };
+    return {
+      transactions: [],
+      settings: resolveSettings({}),
+      categories: createCatalog([]),
+    };
   }
+}
+
+/** A transaction whose category no longer exists is counted as Other. */
+function withKnownCategory<T extends { categoryId: number }>(
+  item: T,
+  categories: CategoryCatalog,
+): T {
+  return categories.byId.has(item.categoryId)
+    ? item
+    : { ...item, categoryId: getFallbackCategory(TransactionKind.Expense).id };
 }
 
 function resolveSettings(stored: Partial<Settings>): Settings {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createTransaction } from '../../test/mocks/transaction';
+import { createCatalog } from '../../utilities/categories';
 import { Granularity, TransactionKind } from '../../utilities/types';
 import { buildInsights, getNiceCeiling, type InsightsQuery } from './insights';
 
@@ -86,6 +87,44 @@ describe('buildInsights', () => {
     });
   });
 
+  describe('when there are custom categories', () => {
+    it('should count them in the totals and the breakdown', () => {
+      const insights = buildInsights(
+        createQuery({
+          transactions: [
+            ...TRANSACTIONS,
+            createTransaction({
+              id: 'a6',
+              day: 20261110,
+              categoryId: 1000,
+              amount: 5500,
+            }),
+          ],
+          categories: createCatalog([
+            {
+              id: 1000,
+              kind: TransactionKind.Expense,
+              label: 'Pets',
+              icon: 'dog',
+            },
+          ]),
+        }),
+      );
+
+      expect(insights.total).toBe(10000);
+      expect(
+        insights.breakdown.map(({ category, amount }) => [
+          category.label,
+          amount,
+        ]),
+      ).toEqual([
+        ['Pets', 5500],
+        ['Groceries', 3000],
+        ['Food', 1500],
+      ]);
+    });
+  });
+
   describe('when a category filter is on', () => {
     it('should narrow the totals and the chart but not the breakdown', () => {
       const insights = buildInsights(createQuery({ categoryId: FOOD }));
@@ -167,6 +206,7 @@ describe('getNiceCeiling', () => {
 function createQuery(overrides: Partial<InsightsQuery> = {}): InsightsQuery {
   return {
     transactions: TRANSACTIONS,
+    categories: createCatalog([]),
     granularity: Granularity.Month,
     kind: TransactionKind.Expense,
     selectedStart: null,

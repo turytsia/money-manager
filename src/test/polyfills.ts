@@ -15,3 +15,6 @@ class AnimationEventPolyfill extends Event implements AnimationEvent {
 }
 
 window.AnimationEvent ??= AnimationEventPolyfill;
+
+// jsdom does no layout, so it has no scrolling either.
+Element.prototype.scrollIntoView ??= function scrollIntoView(): void {};
