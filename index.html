@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>Money Manager</title>
+    <meta
+      name="description"
+      content="Fast, private expense tracking. Works offline and keeps your data on your device."
+    />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      name="theme-color"
+      media="(prefers-color-scheme: light)"
+      content="#fafafa"
+    />
+    <meta
+      name="theme-color"
+      media="(prefers-color-scheme: dark)"
+      content="#000000"
+    />
+
+    <!-- Open full screen when started from the iPhone Home Screen. -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <meta name="apple-mobile-web-app-title" content="Money" />
+
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link
+      rel="preload"
+      as="font"
+      type="font/woff2"
+      crossorigin
+      href="/node_modules/@fontsource-variable/geist/files/geist-latin-wght-normal.woff2"
+    />
+
+    <!-- Paints the right background before the app loads, so there is no
+         flash of the wrong theme. The rest of the styles live in the app. -->
+    <style>
+      html {
+        background: #fafafa;
+      }
+      @media (prefers-color-scheme: dark) {
+        html:not([data-theme='light']) {
+          background: #000000;
+        }
+      }
+      html[data-theme='dark'] {
+        background: #000000;
+      }
+    </style>
+    <script>
+      try {
+        var theme = JSON.parse(localStorage.getItem('mm:settings')).theme;
+        if (theme === 'light' || theme === 'dark') {
+          document.documentElement.dataset.theme = theme;
+        }
+      } catch (error) {
+        // No saved settings yet: the device's own theme is used.
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>Money Manager needs JavaScript to run.</noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
