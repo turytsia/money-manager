@@ -345,7 +345,7 @@ const DeleteConfirmation: React.FC<DeleteConfirmationProps> = ({
       <h2 className={styles.confirmationTitle}>Delete “{category.label}”?</h2>
       <p className={styles.confirmationText}>
         {usageCount > 0
-          ? `Its ${formatCount(usageCount, 'transaction')} will move to ${fallbackLabel}.`
+          ? `Its ${formatCount(usageCount, 'transaction')} will be kept as ${fallbackLabel}.`
           : 'No transactions use it.'}{' '}
         This cannot be undone.
       </p>

@@ -8,8 +8,9 @@ import {
 } from 'lucide-react';
 import { formatMoney } from '../../utilities/money';
 import { TABULAR_STYLE } from '../../utilities/styles';
-import { formatCount } from '../../utilities/text';
 import { TransactionKind, type Granularity } from '../../utilities/types';
+import { SERIES_LABELS } from './BucketChart';
+import type { SeriesSummary } from './insights';
 
 const PERCENT = 100;
 
@@ -43,39 +44,55 @@ const styles = {
     }
   `,
   period: css`
-    display: flex;
-    flex-direction: column;
-    align-items: center;
     min-width: 0;
     font-size: 15px;
     font-weight: 600;
     letter-spacing: -0.01em;
     text-align: center;
   `,
-  filter: css`
-    color: var(--color-fg-secondary);
-    font-size: 12px;
-    font-weight: 500;
+  series: css`
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 16px;
   `,
-  // The one headline number of the screen. Its digits keep their natural
-  // widths, which reads better at this size than equal-width digits.
+  row: css`
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: baseline;
+    column-gap: 8px;
+  `,
+  // The square in the color of the series' bars. Together with the name
+  // beside it, it is the chart's legend.
+  swatch: css`
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+  `,
+  [TransactionKind.Income]: css`
+    background: var(--color-series-earned);
+  `,
+  [TransactionKind.Expense]: css`
+    background: var(--color-series-spent);
+  `,
+  name: css`
+    color: var(--color-fg-secondary);
+    font-size: 14px;
+  `,
   total: css`
-    margin-top: 14px;
-    font-size: clamp(44px, 13.5vw, 56px);
+    font-size: 24px;
     font-weight: 600;
-    line-height: 1.05;
-    letter-spacing: -0.05em;
-    text-align: center;
+    line-height: 1.1;
+    letter-spacing: -0.03em;
   `,
   comparison: css`
     display: flex;
+    grid-column: 2 / -1;
     align-items: center;
-    justify-content: center;
     gap: 6px;
-    min-height: 20px;
-    margin-top: 6px;
-    color: var(--color-fg-secondary);
-    font-size: 13px;
+    min-height: 18px;
+    color: var(--color-fg-tertiary);
+    font-size: 12px;
   `,
   // Shown with an arrow and words, so the meaning never rests on color alone.
   better: css`
@@ -84,50 +101,33 @@ const styles = {
   worse: css`
     color: var(--color-danger);
   `,
-  facts: css`
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 2px 14px;
-    margin-top: 4px;
-    color: var(--color-fg-secondary);
-    font-size: 13px;
-  `,
 };
 
 export interface PeriodSummaryProps {
   label: string;
-  /** The category the numbers are narrowed to, when a filter is on. */
-  filterLabel: string | undefined;
-  total: number;
-  previousTotal: number;
-  averagePerDay: number | null;
-  count: number;
+  /** One entry per series drawn in the chart. */
+  series: ReadonlyArray<SeriesSummary>;
   granularity: Granularity;
-  kind: TransactionKind;
   currency: string;
   canGoBack: boolean;
   canGoForward: boolean;
   onStep: (direction: -1 | 1) => void;
 }
 
-interface ComparisonProps {
-  total: number;
-  previousTotal: number;
+interface SeriesRowProps {
+  summary: SeriesSummary;
   granularity: Granularity;
-  kind: TransactionKind;
+  currency: string;
 }
 
-/** The selected period: its name, total, and how it compares. */
+/**
+ * The selected period: its name, what was earned and spent in it, and how
+ * each compares with the period before.
+ */
 export const PeriodSummary: React.FC<PeriodSummaryProps> = ({
   label,
-  filterLabel,
-  total,
-  previousTotal,
-  averagePerDay,
-  count,
+  series,
   granularity,
-  kind,
   currency,
   canGoBack,
   canGoForward,
@@ -145,10 +145,7 @@ export const PeriodSummary: React.FC<PeriodSummaryProps> = ({
         >
           <ChevronLeft size={18} aria-hidden='true' />
         </button>
-        <h2 className={styles.period}>
-          {label}
-          {filterLabel && <span className={styles.filter}>{filterLabel}</span>}
-        </h2>
+        <h2 className={styles.period}>{label}</h2>
         <button
           type='button'
           aria-label={`Next ${granularity}`}
@@ -159,55 +156,75 @@ export const PeriodSummary: React.FC<PeriodSummaryProps> = ({
           <ChevronRight size={18} aria-hidden='true' />
         </button>
       </div>
-      <p className={styles.total}>{formatMoney(total, currency)}</p>
-      <Comparison
-        total={total}
-        previousTotal={previousTotal}
-        granularity={granularity}
-        kind={kind}
-      />
-      <p className={cx(styles.facts, TABULAR_STYLE)}>
-        {averagePerDay !== null && (
-          <span>{formatMoney(averagePerDay, currency)} per day</span>
-        )}
-        <span>{formatCount(count, 'transaction')}</span>
-      </p>
+      <div className={styles.series}>
+        {series.map((summary) => (
+          <SeriesRow
+            key={summary.kind}
+            summary={summary}
+            granularity={granularity}
+            currency={currency}
+          />
+        ))}
+      </div>
     </div>
   );
 };
 
-const Comparison: React.FC<ComparisonProps> = ({
-  total,
-  previousTotal,
+const SeriesRow: React.FC<SeriesRowProps> = ({
+  summary,
   granularity,
-  kind,
+  currency,
 }) => {
-  if (previousTotal === 0 || total === previousTotal) {
-    return (
-      <p className={styles.comparison}>
-        {previousTotal === 0
-          ? `Nothing in the previous ${granularity}`
-          : `Same as the previous ${granularity}`}
-      </p>
-    );
-  }
+  const { kind, categoryLabel, total, previousTotal } = summary;
   const isHigher = total > previousTotal;
+  // Spending more is the bad direction; earning more is the good one.
+  const isBetter = isHigher === (kind === TransactionKind.Income);
+  const hasChange = previousTotal > 0 && total !== previousTotal;
+
+  return (
+    <div className={styles.row}>
+      <span className={cx(styles.swatch, styles[kind])} aria-hidden='true' />
+      <span className={styles.name}>
+        {categoryLabel ?? SERIES_LABELS[kind]}
+      </span>
+      <span className={cx(styles.total, TABULAR_STYLE)}>
+        {formatMoney(total, currency)}
+      </span>
+      <span className={styles.comparison}>
+        {hasChange && isHigher && (
+          <TrendingUp
+            size={14}
+            aria-hidden='true'
+            className={isBetter ? styles.better : styles.worse}
+          />
+        )}
+        {hasChange && !isHigher && (
+          <TrendingDown
+            size={14}
+            aria-hidden='true'
+            className={isBetter ? styles.better : styles.worse}
+          />
+        )}
+        {getComparison(total, previousTotal, granularity)}
+      </span>
+    </div>
+  );
+};
+
+function getComparison(
+  total: number,
+  previousTotal: number,
+  granularity: Granularity,
+): string {
+  if (previousTotal === 0) {
+    return `Nothing in the previous ${granularity}`;
+  }
+  if (total === previousTotal) {
+    return `Same as the previous ${granularity}`;
+  }
   const percent = Math.round(
     (Math.abs(total - previousTotal) / previousTotal) * PERCENT,
   );
-  // Spending more is the bad direction; earning more is the good one.
-  const isBetter = isHigher === (kind === TransactionKind.Income);
-  const Icon = isHigher ? TrendingUp : TrendingDown;
-
-  return (
-    <p className={styles.comparison}>
-      <Icon
-        size={15}
-        aria-hidden='true'
-        className={isBetter ? styles.better : styles.worse}
-      />
-      {percent.toLocaleString('en-US')}% {isHigher ? 'more' : 'less'} than the
-      previous {granularity}
-    </p>
-  );
-};
+  const direction = total > previousTotal ? 'more' : 'less';
+  return `${percent.toLocaleString('en-US')}% ${direction} than the previous ${granularity}`;
+}

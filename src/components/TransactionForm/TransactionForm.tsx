@@ -112,7 +112,7 @@ const styles = {
     padding: 0;
   `,
   // Briefly covers the button after a save, as feedback right where the
-  // thumb is. It is replayed by remounting, so no timer is needed.
+  // thumb is. It is removed again once its animation has played.
   confirmation: css`
     position: absolute;
     inset: 0;
@@ -166,6 +166,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
   );
   const [day, setDay] = React.useState<DayKey | null>(transaction?.day ?? null);
   const [savedCount, setSavedCount] = React.useState(0);
+  const [isConfirming, setIsConfirming] = React.useState(false);
 
   const isEditing = transaction !== undefined;
   const amount = parseAmountText(amountText);
@@ -207,6 +208,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
       setAmountText('');
       setDay(null);
       setSavedCount((count) => count + 1);
+      setIsConfirming(true);
     }
   };
 
@@ -236,6 +238,11 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
     window.addEventListener('keydown', listener);
     return () => window.removeEventListener('keydown', listener);
   }, []);
+
+  // Switching to another tab hides this form, which stops the "Saved"
+  // animation part-way. A browser replays an animation when its element is
+  // shown again, so the leftover is dropped when the form gets hidden.
+  React.useEffect(() => () => setIsConfirming(false), []);
 
   return (
     <div ref={root} className={styles.root}>
@@ -288,11 +295,12 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
           onClick={handleSubmit}
         >
           {getSubmitLabel(isEditing, kind)}
-          {savedCount > 0 && (
+          {isConfirming && (
             <span
               key={savedCount}
               className={styles.confirmation}
               aria-hidden='true'
+              onAnimationEnd={() => setIsConfirming(false)}
             >
               <Check size={18} strokeWidth={2.5} />
               Saved
@@ -324,9 +332,13 @@ function isSelectable(
   categories: CategoryCatalog,
   keptCategoryId: number | undefined,
 ): boolean {
-  const isShown =
-    !categories.hiddenIds.has(categoryId) || categoryId === keptCategoryId;
-  return isShown && categories.byId.get(categoryId)?.kind === kind;
+  const category = categories.byId.get(categoryId);
+  if (category?.kind !== kind) {
+    return false;
+  }
+  const isOffered =
+    !category.isFallback && !categories.hiddenIds.has(categoryId);
+  return isOffered || categoryId === keptCategoryId;
 }
 
 /**

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { css } from '@emotion/css';
+import { css, cx } from '@emotion/css';
 
 const PERCENT = 100;
 
@@ -29,12 +29,15 @@ export interface ProgressBarProps {
   /** Says what the bar shows, for screen readers. */
   label: string;
   height?: number;
+  /** Sets the color of the bar through the text color. */
+  className?: string;
 }
 
 export const ProgressBar: React.FC<ProgressBarProps> = ({
   ratio,
   label,
   height = 8,
+  className,
 }) => {
   const percent = toPercent(ratio);
 
@@ -46,7 +49,7 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
       aria-valuemax={PERCENT}
       aria-valuenow={Math.round(percent)}
       height={height}
-      className={styles.root}
+      className={cx(styles.root, className)}
     >
       <rect
         className={styles.track}

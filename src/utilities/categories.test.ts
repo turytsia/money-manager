@@ -13,7 +13,7 @@ import {
 import { TransactionKind, type CustomCategory } from './types';
 
 const TRANSPORT = 3;
-const OTHER = 9;
+const UNCATEGORIZED = 9;
 
 const COFFEE: CustomCategory = {
   id: 1000,
@@ -31,7 +31,7 @@ const TIPS: CustomCategory = {
 
 describe('categories', () => {
   describe('when a catalog is created', () => {
-    it('should offer custom categories after the built-in ones and before Other', () => {
+    it('should list custom categories after the built-in ones, with Uncategorized last', () => {
       const catalog = createCatalog([COFFEE, TIPS]);
 
       expect(
@@ -46,11 +46,11 @@ describe('categories', () => {
         'Fun',
         'Shopping',
         'Coffee',
-        'Other',
+        'Uncategorized',
       ]);
       expect(
         catalog.byKind[TransactionKind.Income].map(({ label }) => label),
-      ).toEqual(['Salary', 'Freelance', 'Gift', 'Tips', 'Other']);
+      ).toEqual(['Salary', 'Freelance', 'Gift', 'Tips', 'Uncategorized']);
     });
 
     it('should give a custom category a stable slug for backups', () => {
@@ -81,18 +81,23 @@ describe('categories', () => {
         'Health',
         'Fun',
         'Shopping',
-        'Other',
       ]);
       expect(getCategory(catalog, TRANSPORT).label).toBe('Transport');
       expect(catalog.byKind[TransactionKind.Expense]).toHaveLength(10);
     });
 
-    it('should never hide Other, so there is always something to pick', () => {
-      const catalog = createCatalog([], [OTHER, 13]);
+    it('should keep one category of each type on, so there is one to pick', () => {
+      const catalog = createCatalog([], [1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12]);
 
-      expect(catalog.hiddenIds.size).toBe(0);
-      expect(canHideCategory(OTHER)).toBe(false);
-      expect(canHideCategory(TRANSPORT)).toBe(true);
+      expect(
+        catalog.visibleByKind[TransactionKind.Expense].map(
+          ({ label }) => label,
+        ),
+      ).toEqual(['Food']);
+      expect(
+        catalog.visibleByKind[TransactionKind.Income].map(({ label }) => label),
+      ).toEqual(['Salary']);
+      expect(catalog.hiddenIds.has(1)).toBe(false);
     });
 
     it('should forget hidden ids of categories that no longer exist', () => {
@@ -100,10 +105,27 @@ describe('categories', () => {
     });
   });
 
-  it('should show an unknown category as Other', () => {
-    expect(getCategory(createCatalog([]), 1000)).toMatchObject({
-      slug: 'other',
-      kind: TransactionKind.Expense,
+  describe('when a transaction has no category of its own', () => {
+    it('should show an unknown category as Uncategorized', () => {
+      expect(getCategory(createCatalog([]), 1000)).toMatchObject({
+        slug: 'other',
+        label: 'Uncategorized',
+        kind: TransactionKind.Expense,
+        isFallback: true,
+      });
+    });
+
+    it('should never offer Uncategorized as something to pick or turn off', () => {
+      const catalog = createCatalog([], [UNCATEGORIZED, 13]);
+
+      expect(
+        Object.values(catalog.visibleByKind)
+          .flat()
+          .some(({ isFallback }) => isFallback),
+      ).toBe(false);
+      expect(catalog.hiddenIds.size).toBe(0);
+      expect(canHideCategory(UNCATEGORIZED)).toBe(false);
+      expect(canHideCategory(TRANSPORT)).toBe(true);
     });
   });
 
@@ -145,6 +167,11 @@ describe('categories', () => {
       [
         'the name of a custom category',
         ' COFFEE ',
+        'A category with this name already exists',
+      ],
+      [
+        'the name kept for transactions without a category',
+        'uncategorized',
         'A category with this name already exists',
       ],
       [

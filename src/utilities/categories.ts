@@ -15,19 +15,24 @@ export const FIRST_CUSTOM_CATEGORY_ID = 1000;
 /** New custom ids count seconds from this moment (1 January 2025, UTC). */
 const CATEGORY_ID_EPOCH = Date.UTC(2025, 0, 1);
 const MILLISECONDS_PER_SECOND = 1000;
+const UNCATEGORIZED_LABEL = 'Uncategorized';
 
-const OTHER_EXPENSE = builtIn(
+/**
+ * Where transactions belong when their category was deleted or is not
+ * known. These two cannot be picked or turned off; they only show up on
+ * transactions that have nowhere else to go. Their ids and slugs are the
+ * ones of the former "Other" categories, so older data still reads.
+ */
+const UNCATEGORIZED_EXPENSE = fallback(
   9,
   'other',
-  'Other',
   TransactionKind.Expense,
   'package',
 );
 
-const OTHER_INCOME = builtIn(
+const UNCATEGORIZED_INCOME = fallback(
   13,
   'other-income',
-  'Other',
   TransactionKind.Income,
   'coins',
 );
@@ -49,17 +54,16 @@ export const BUILT_IN_CATEGORIES: ReadonlyArray<Category> = [
   builtIn(6, 'health', 'Health', TransactionKind.Expense, 'heart-pulse'),
   builtIn(7, 'fun', 'Fun', TransactionKind.Expense, 'clapperboard'),
   builtIn(8, 'shopping', 'Shopping', TransactionKind.Expense, 'shopping-bag'),
-  OTHER_EXPENSE,
+  UNCATEGORIZED_EXPENSE,
   builtIn(10, 'salary', 'Salary', TransactionKind.Income, 'briefcase'),
   builtIn(11, 'freelance', 'Freelance', TransactionKind.Income, 'laptop'),
   builtIn(12, 'gift', 'Gift', TransactionKind.Income, 'gift'),
-  OTHER_INCOME,
+  UNCATEGORIZED_INCOME,
 ];
 
-/** Where transactions go when their category is deleted or unknown. */
 const FALLBACK_CATEGORIES: Readonly<Record<TransactionKind, Category>> = {
-  [TransactionKind.Expense]: OTHER_EXPENSE,
-  [TransactionKind.Income]: OTHER_INCOME,
+  [TransactionKind.Expense]: UNCATEGORIZED_EXPENSE,
+  [TransactionKind.Income]: UNCATEGORIZED_INCOME,
 };
 
 const BUILT_IN_BY_SLUG = new Map(
@@ -81,6 +85,8 @@ export interface Category {
   readonly iconName: CategoryIconName;
   readonly icon: LucideIcon;
   readonly isCustom: boolean;
+  /** True for "Uncategorized", which holds transactions without a category. */
+  readonly isFallback: boolean;
 }
 
 /** Every category, built-in and custom, with quick ways to look them up. */
@@ -89,7 +95,7 @@ export interface CategoryCatalog {
   /** The custom categories in the form they are saved in. */
   readonly customCategories: ReadonlyArray<CustomCategory>;
   readonly byId: ReadonlyMap<number, Category>;
-  /** The order categories are offered in: built-in, then custom, then Other. */
+  /** Every category of a kind: built-in, then custom, then Uncategorized. */
   readonly byKind: Readonly<Record<TransactionKind, ReadonlyArray<Category>>>;
   /** Categories the user turned off. Their transactions are unaffected. */
   readonly hiddenIds: ReadonlySet<number>;
@@ -113,7 +119,15 @@ export function createCatalog(
     [TransactionKind.Expense]: orderForKind(TransactionKind.Expense, custom),
     [TransactionKind.Income]: orderForKind(TransactionKind.Income, custom),
   };
-  const isVisible = ({ id }: Category): boolean => !hiddenIds.has(id);
+  // One category of each kind always stays on, so there is one to pick.
+  Object.values(byKind).forEach((categories) => {
+    const pickable = categories.filter(({ isFallback }) => !isFallback);
+    if (pickable.every(({ id }) => hiddenIds.has(id))) {
+      hiddenIds.delete(pickable[0].id);
+    }
+  });
+  const isVisible = ({ id, isFallback }: Category): boolean =>
+    !isFallback && !hiddenIds.has(id);
   return {
     all,
     customCategories,
@@ -129,14 +143,14 @@ export function createCatalog(
   };
 }
 
-/** "Other" always stays, so there is always a category to pick. */
+/** Every category that can be picked can also be turned off. */
 export function canHideCategory(id: number): boolean {
-  return id !== OTHER_EXPENSE.id && id !== OTHER_INCOME.id;
+  return id !== UNCATEGORIZED_EXPENSE.id && id !== UNCATEGORIZED_INCOME.id;
 }
 
-/** Looks up a category. An unknown id is shown as Other. */
+/** Looks up a category. An unknown id is shown as Uncategorized. */
 export function getCategory(catalog: CategoryCatalog, id: number): Category {
-  return catalog.byId.get(id) ?? OTHER_EXPENSE;
+  return catalog.byId.get(id) ?? UNCATEGORIZED_EXPENSE;
 }
 
 export function getFallbackCategory(kind: TransactionKind): Category {
@@ -281,6 +295,7 @@ function toCategory({ id, kind, label, icon }: CustomCategory): Category {
     iconName: icon,
     icon: CATEGORY_ICONS[icon],
     isCustom: true,
+    isFallback: false,
   };
 }
 
@@ -288,13 +303,12 @@ function orderForKind(
   kind: TransactionKind,
   custom: ReadonlyArray<Category>,
 ): Array<Category> {
-  const fallback = FALLBACK_CATEGORIES[kind];
   const isListed = (category: Category): boolean =>
-    category.kind === kind && category !== fallback;
+    category.kind === kind && !category.isFallback;
   return [
     ...BUILT_IN_CATEGORIES.filter(isListed),
     ...custom.filter(isListed),
-    fallback,
+    FALLBACK_CATEGORIES[kind],
   ];
 }
 
@@ -313,5 +327,18 @@ function builtIn(
     iconName,
     icon: CATEGORY_ICONS[iconName],
     isCustom: false,
+    isFallback: false,
+  };
+}
+
+function fallback(
+  id: number,
+  slug: string,
+  kind: TransactionKind,
+  iconName: CategoryIconName,
+): Category {
+  return {
+    ...builtIn(id, slug, UNCATEGORIZED_LABEL, kind, iconName),
+    isFallback: true,
   };
 }

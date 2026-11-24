@@ -79,7 +79,7 @@ describe('createStore', () => {
   });
 
   describe('when a custom category is deleted', () => {
-    it('should move its transactions to Other of the same type', () => {
+    it('should keep its transactions as Uncategorized of the same type', () => {
       localStorage.setItem(
         'mm:categories',
         '[{"id":1000,"kind":"income","label":"Tips","icon":"coins"}]',
@@ -128,14 +128,24 @@ describe('createStore', () => {
       expect(store.getState().categories.hiddenIds.size).toBe(0);
     });
 
-    it('should refuse to hide Other', () => {
+    it('should refuse to hide Uncategorized', () => {
       const store = createStore();
 
       expect(store.setCategoryHidden(9, true)).toBe(false);
     });
+
+    it('should refuse to hide the last category of a type that is still on', () => {
+      const store = createStore();
+
+      expect(store.setCategoryHidden(10, true)).toBe(true);
+      expect(store.setCategoryHidden(11, true)).toBe(true);
+      expect(store.setCategoryHidden(12, true)).toBe(false);
+
+      expect(localStorage.getItem('mm:hidden')).toBe('[10,11]');
+    });
   });
 
-  it('should count a transaction of an unknown category as Other', () => {
+  it('should count a transaction of an unknown category as Uncategorized', () => {
     localStorage.setItem('mm:tx:202611', '[["a1",23,1000,500]]');
 
     const store = createStore();

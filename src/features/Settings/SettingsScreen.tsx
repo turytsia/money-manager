@@ -14,7 +14,6 @@ import { CURRENCIES } from '../../utilities/money';
 import { SCREEN_STYLE } from '../../utilities/styles';
 import { ThemePreference } from '../../utilities/types';
 import { BackupSection } from './BackupSection';
-import { CategoriesSection } from './CategoriesSection';
 import { EraseSection } from './EraseSection';
 import { SettingsSection } from './SettingsSection';
 import { SyncSection } from './SyncSection';
@@ -123,7 +122,6 @@ export const SettingsScreen: React.FC = () => {
           This only changes the symbol. Amounts are not converted.
         </p>
       </SettingsSection>
-      <CategoriesSection />
       <SyncSection />
       <BackupSection />
       {!IS_INSTALLED && (

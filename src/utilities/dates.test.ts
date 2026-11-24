@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   countBucketsBetween,
-  countElapsedDays,
   formatBucket,
   formatDay,
   fromDayKey,
@@ -92,20 +91,6 @@ describe('dates', () => {
       expect(countBucketsBetween(from, to, granularity)).toBe(expected);
     },
   );
-
-  describe('when counting the elapsed days of a period', () => {
-    it('should stop at today for the period that is still running', () => {
-      expect(countElapsedDays(20261101, Granularity.Month, 20261123)).toBe(23);
-    });
-
-    it('should count every day of a period that is over', () => {
-      expect(countElapsedDays(20261001, Granularity.Month, 20261123)).toBe(31);
-    });
-
-    it('should count one day for a period that has not started', () => {
-      expect(countElapsedDays(20261201, Granularity.Month, 20261123)).toBe(1);
-    });
-  });
 
   it('should name recent days in words and other days by date', () => {
     expect(formatDay(20261123, 20261123)).toBe('Today');

@@ -30,7 +30,8 @@ const LIGHT_TOKENS = `
   --color-danger: #cb2a2f;
   --color-success: #297a3a;
   --color-warning: #a35200;
-  --color-chart-muted: #8f8f8f;
+  --color-series-spent: #2a78d6;
+  --color-series-earned: #199e70;
   --color-grid-dot: rgba(0, 0, 0, 0.16);
   --color-overlay: rgba(0, 0, 0, 0.4);
   --shadow-raised: 0 8px 30px rgba(0, 0, 0, 0.12);
@@ -51,7 +52,8 @@ const DARK_TOKENS = `
   --color-danger: #ff6166;
   --color-success: #62c073;
   --color-warning: #ffb224;
-  --color-chart-muted: #5e5e5e;
+  --color-series-spent: #3987e5;
+  --color-series-earned: #199e70;
   --color-grid-dot: rgba(255, 255, 255, 0.2);
   --color-overlay: rgba(0, 0, 0, 0.66);
   --shadow-raised: 0 8px 30px rgba(0, 0, 0, 0.6);

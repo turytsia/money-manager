@@ -6,7 +6,6 @@ import {
 import type { Category, CategoryCatalog } from '../../utilities/categories';
 import {
   countBucketsBetween,
-  countElapsedDays,
   formatBucket,
   formatBucketRange,
   formatBucketTick,
@@ -14,18 +13,24 @@ import {
   shiftBucket,
 } from '../../utilities/dates';
 import {
-  Granularity,
+  TransactionKind,
   type DayKey,
+  type Granularity,
   type Transaction,
-  type TransactionKind,
 } from '../../utilities/types';
 
-/** How many bars the chart shows at once for each way of grouping. */
+/** The order the two series are shown in: earned first, then spent. */
+export const SERIES_KINDS: ReadonlyArray<TransactionKind> = [
+  TransactionKind.Income,
+  TransactionKind.Expense,
+];
+
+/** How many periods the chart shows at once for each way of grouping. */
 export const WINDOW_SIZES: Readonly<Record<Granularity, number>> = {
-  [Granularity.Day]: 14,
-  [Granularity.Week]: 12,
-  [Granularity.Month]: 12,
-  [Granularity.Year]: 6,
+  day: 14,
+  week: 12,
+  month: 12,
+  year: 6,
 };
 
 // Every step, and half of it, is a clean number, so the chart's scale and
@@ -39,7 +44,6 @@ export interface InsightsQuery {
   transactions: ReadonlyArray<Transaction>;
   categories: CategoryCatalog;
   granularity: Granularity;
-  kind: TransactionKind;
   /** First day of the chosen period, or null for the one containing today. */
   selectedStart: DayKey | null;
   /** Narrows the chart and totals to one category. */
@@ -47,39 +51,47 @@ export interface InsightsQuery {
   today: DayKey;
 }
 
+export type KindAmounts = Readonly<Record<TransactionKind, number>>;
+
+/** One period of the chart, with what was earned and spent in it. */
 export interface ChartBar {
   start: DayKey;
-  amount: number;
-  /** Short text under the bar. */
+  amounts: KindAmounts;
+  /** Short text under the bars. */
   tick: string;
   /** Full name of the period. */
   label: string;
 }
 
+/** The figures of one series for the selected period. */
+export interface SeriesSummary {
+  kind: TransactionKind;
+  /** The category the series is narrowed to, while a filter is on. */
+  categoryLabel: string | undefined;
+  total: number;
+  /** Total of the period right before the selected one. */
+  previousTotal: number;
+}
+
 export interface BreakdownItem {
   category: Category;
   amount: number;
-  count: number;
-  /** Part of the period's total, from 0 to 1. */
+  /** Part of the period's total for that kind, from 0 to 1. */
   share: number;
 }
 
 export interface Insights {
   selectedStart: DayKey;
   label: string;
-  /** The span of time covered by all bars of the chart. */
+  /** The span of time covered by all periods of the chart. */
   rangeLabel: string;
+  /** Both series, or only the one a category filter belongs to. */
+  series: Array<SeriesSummary>;
   bars: Array<ChartBar>;
   /** A round number at or above the tallest bar, for the chart's scale. */
   scaleMax: number;
-  total: number;
-  count: number;
-  /** Total of the period right before the selected one. */
-  previousTotal: number;
-  /** Null for single days, where an average per day says nothing. */
-  averagePerDay: number | null;
-  /** Categories of the selected period, largest first. */
-  breakdown: Array<BreakdownItem>;
+  /** Categories of the selected period for each kind, largest first. */
+  breakdown: Readonly<Record<TransactionKind, Array<BreakdownItem>>>;
   canGoBack: boolean;
   canGoForward: boolean;
 }
@@ -95,15 +107,36 @@ export function buildInsights({
   transactions,
   categories,
   granularity,
-  kind,
   selectedStart,
   categoryId,
   today,
 }: InsightsQuery): Insights {
   const index = getBucketIndex(transactions, granularity);
-  const kindCategories = categories.byKind[kind];
-  const categoryIds =
-    categoryId === null ? kindCategories.map(({ id }) => id) : [categoryId];
+  const filter =
+    categoryId === null ? undefined : categories.byId.get(categoryId);
+  const kinds = filter ? [filter.kind] : SERIES_KINDS;
+  const getIds = (kind: TransactionKind): Array<number> =>
+    filter
+      ? [filter].filter((category) => category.kind === kind).map(getId)
+      : categories.byKind[kind].map(getId);
+  const idsByKind: Readonly<Record<TransactionKind, Array<number>>> = {
+    [TransactionKind.Expense]: getIds(TransactionKind.Expense),
+    [TransactionKind.Income]: getIds(TransactionKind.Income),
+  };
+  const getAmounts = (start: DayKey): KindAmounts => {
+    const totals = index.get(start);
+    return {
+      [TransactionKind.Expense]: sumBucket(
+        totals,
+        idsByKind[TransactionKind.Expense],
+      ).amount,
+      [TransactionKind.Income]: sumBucket(
+        totals,
+        idsByKind[TransactionKind.Income],
+      ).amount,
+    };
+  };
+
   const currentStart = getBucketStart(today, granularity);
   const starts = [...index.keys()];
   const earliestStart = starts.reduce(
@@ -136,15 +169,15 @@ export function buildInsights({
     );
     return {
       start,
-      amount: sumBucket(index.get(start), categoryIds).amount,
+      amounts: getAmounts(start),
       tick: formatBucketTick(start, granularity),
       label: formatBucket(start, granularity, today),
     };
   });
 
+  const selectedAmounts = getAmounts(selected);
+  const previousAmounts = getAmounts(shiftBucket(selected, granularity, -1));
   const selectedTotals = index.get(selected);
-  const { amount: total, count } = sumBucket(selectedTotals, categoryIds);
-  const previousStart = shiftBucket(selected, granularity, -1);
 
   return {
     selectedStart: selected,
@@ -154,16 +187,28 @@ export function buildInsights({
       bars[windowSize - 1].start,
       granularity,
     ),
+    series: kinds.map((kind) => ({
+      kind,
+      categoryLabel: filter?.label,
+      total: selectedAmounts[kind],
+      previousTotal: previousAmounts[kind],
+    })),
     bars,
-    scaleMax: getNiceCeiling(Math.max(...bars.map(({ amount }) => amount))),
-    total,
-    count,
-    previousTotal: sumBucket(index.get(previousStart), categoryIds).amount,
-    averagePerDay:
-      granularity === Granularity.Day
-        ? null
-        : Math.round(total / countElapsedDays(selected, granularity, today)),
-    breakdown: getBreakdown(selectedTotals, kindCategories),
+    scaleMax: getNiceCeiling(
+      Math.max(
+        ...bars.flatMap(({ amounts }) => kinds.map((kind) => amounts[kind])),
+      ),
+    ),
+    breakdown: {
+      [TransactionKind.Expense]: getBreakdown(
+        selectedTotals,
+        categories.byKind[TransactionKind.Expense],
+      ),
+      [TransactionKind.Income]: getBreakdown(
+        selectedTotals,
+        categories.byKind[TransactionKind.Income],
+      ),
+    },
     canGoBack: selected > earliestStart,
     canGoForward: selected < latestStart,
   };
@@ -186,18 +231,17 @@ function getBreakdown(
   if (!totals) {
     return [];
   }
-  const kindTotal = sumBucket(
-    totals,
-    kindCategories.map(({ id }) => id),
-  ).amount;
+  const kindTotal = sumBucket(totals, kindCategories.map(getId)).amount;
   return kindCategories
     .flatMap((category) => {
-      const sum = totals.get(category.id);
-      if (!sum || sum.amount === 0) {
-        return [];
-      }
-      const { amount, count } = sum;
-      return [{ category, amount, count, share: amount / kindTotal }];
+      const amount = totals.get(category.id)?.amount ?? 0;
+      return amount > 0
+        ? [{ category, amount, share: amount / kindTotal }]
+        : [];
     })
     .sort((a, b) => b.amount - a.amount);
+}
+
+function getId({ id }: Category): number {
+  return id;
 }

@@ -155,7 +155,8 @@ export const CategoryGrid: React.FC<CategoryGridProps> = ({
   const [isManaging, setIsManaging] = React.useState(false);
   const [fade, setFade] = React.useState(ScrollFade.None);
   const categories = catalog.byKind[kind].filter(
-    ({ id }) => !catalog.hiddenIds.has(id) || id === keptId,
+    ({ id, isFallback }) =>
+      (!isFallback && !catalog.hiddenIds.has(id)) || id === keptId,
   );
   const rowCount = Math.ceil((categories.length + 1) / COLUMN_COUNT);
 

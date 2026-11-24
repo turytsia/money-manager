@@ -163,22 +163,6 @@ export function countBucketsBetween(
   }
 }
 
-/**
- * Days of a bucket that have already happened. The running bucket only
- * counts up to today, so averages are not diluted by days still to come.
- */
-export function countElapsedDays(
-  start: DayKey,
-  granularity: Granularity,
-  today: DayKey,
-): number {
-  const end = Math.min(
-    getBucketEnd(start, granularity),
-    Math.max(today, start),
-  );
-  return differenceInCalendarDays(fromDayKey(end), fromDayKey(start)) + 1;
-}
-
 export function formatDay(day: DayKey, today: DayKey): string {
   if (day === today) {
     return 'Today';

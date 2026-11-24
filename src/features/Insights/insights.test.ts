@@ -6,6 +6,7 @@ import { buildInsights, getNiceCeiling, type InsightsQuery } from './insights';
 
 const FOOD = 1;
 const GROCERIES = 2;
+const UNCATEGORIZED = 9;
 const SALARY = 10;
 
 // "Today" is Monday, 23 November 2026.
@@ -47,14 +48,29 @@ describe('buildInsights', () => {
       expect(insights).toMatchObject({
         selectedStart: 20261101,
         label: 'November 2026',
-        total: 4500,
-        count: 3,
-        previousTotal: 2000,
-        averagePerDay: 196,
-        scaleMax: 5000,
+        scaleMax: 100000,
         canGoBack: true,
         canGoForward: false,
       });
+    });
+
+    it('should total what was earned and what was spent, in that order', () => {
+      const { series } = buildInsights(createQuery());
+
+      expect(series).toEqual([
+        {
+          kind: TransactionKind.Income,
+          categoryLabel: undefined,
+          total: 90000,
+          previousTotal: 0,
+        },
+        {
+          kind: TransactionKind.Expense,
+          categoryLabel: undefined,
+          total: 4500,
+          previousTotal: 2000,
+        },
+      ]);
     });
 
     it('should end the chart on the current period', () => {
@@ -63,26 +79,28 @@ describe('buildInsights', () => {
       expect(bars).toHaveLength(12);
       expect(bars[0]).toMatchObject({
         start: 20251201,
-        amount: 0,
+        amounts: { expense: 0, income: 0 },
         tick: 'Dec',
       });
-      expect(bars[10]).toMatchObject({ start: 20261001, amount: 2000 });
-      expect(bars[11]).toMatchObject({ start: 20261101, amount: 4500 });
+      expect(bars[10]).toMatchObject({
+        start: 20261001,
+        amounts: { expense: 2000, income: 0 },
+      });
+      expect(bars[11]).toMatchObject({
+        start: 20261101,
+        amounts: { expense: 4500, income: 90000 },
+      });
     });
 
-    it('should rank the categories of the period by amount', () => {
+    it('should rank the categories of the period by amount for each kind', () => {
       const { breakdown } = buildInsights(createQuery());
 
-      expect(
-        breakdown.map(({ category, amount, count, share }) => ({
-          slug: category.slug,
-          amount,
-          count,
-          share,
-        })),
-      ).toEqual([
-        { slug: 'groceries', amount: 3000, count: 1, share: 3000 / 4500 },
-        { slug: 'food', amount: 1500, count: 2, share: 1500 / 4500 },
+      expect(toRows(breakdown[TransactionKind.Expense])).toEqual([
+        ['Groceries', 3000, 3000 / 4500],
+        ['Food', 1500, 1500 / 4500],
+      ]);
+      expect(toRows(breakdown[TransactionKind.Income])).toEqual([
+        ['Salary', 90000, 1],
       ]);
     });
   });
@@ -111,47 +129,77 @@ describe('buildInsights', () => {
         }),
       );
 
-      expect(insights.total).toBe(10000);
+      expect(insights.series[1].total).toBe(10000);
       expect(
-        insights.breakdown.map(({ category, amount }) => [
-          category.label,
-          amount,
-        ]),
-      ).toEqual([
-        ['Pets', 5500],
-        ['Groceries', 3000],
-        ['Food', 1500],
+        insights.breakdown[TransactionKind.Expense].map(
+          ({ category }) => category.label,
+        ),
+      ).toEqual(['Pets', 'Groceries', 'Food']);
+    });
+  });
+
+  describe('when a transaction has no category', () => {
+    it('should still count it, as Uncategorized', () => {
+      const insights = buildInsights(
+        createQuery({
+          transactions: [
+            createTransaction({ categoryId: UNCATEGORIZED, amount: 700 }),
+          ],
+        }),
+      );
+
+      expect(insights.series[1].total).toBe(700);
+      expect(toRows(insights.breakdown[TransactionKind.Expense])).toEqual([
+        ['Uncategorized', 700, 1],
       ]);
     });
   });
 
   describe('when a category filter is on', () => {
-    it('should narrow the totals and the chart but not the breakdown', () => {
+    it('should narrow the totals and the chart to that category', () => {
       const insights = buildInsights(createQuery({ categoryId: FOOD }));
 
-      expect(insights.total).toBe(1500);
-      expect(insights.count).toBe(2);
-      expect(insights.bars[11].amount).toBe(1500);
-      expect(insights.breakdown).toHaveLength(2);
+      expect(insights.series).toEqual([
+        {
+          kind: TransactionKind.Expense,
+          categoryLabel: 'Food',
+          total: 1500,
+          previousTotal: 2000,
+        },
+      ]);
+      expect(insights.bars[11].amounts).toEqual({ expense: 1500, income: 0 });
+      expect(insights.scaleMax).toBe(2000);
+    });
+
+    it('should leave the breakdown as it is', () => {
+      const { breakdown } = buildInsights(createQuery({ categoryId: FOOD }));
+
+      expect(breakdown[TransactionKind.Expense]).toHaveLength(2);
+      expect(breakdown[TransactionKind.Income]).toHaveLength(1);
+    });
+
+    it('should show only what was earned for an income category', () => {
+      const { series } = buildInsights(createQuery({ categoryId: SALARY }));
+
+      expect(series).toMatchObject([
+        { kind: TransactionKind.Income, categoryLabel: 'Salary', total: 90000 },
+      ]);
+    });
+
+    it('should show everything when the category is not known', () => {
+      const { series } = buildInsights(createQuery({ categoryId: 4242 }));
+
+      expect(series).toHaveLength(2);
     });
   });
 
-  it('should show income when that kind is asked for', () => {
-    const insights = buildInsights(
-      createQuery({ kind: TransactionKind.Income }),
-    );
-
-    expect(insights.total).toBe(90000);
-    expect(insights.breakdown).toHaveLength(1);
-  });
-
-  it('should not give a daily average for a single day', () => {
+  it('should group by day when asked to', () => {
     const insights = buildInsights(
       createQuery({ granularity: Granularity.Day }),
     );
 
-    expect(insights.total).toBe(4000);
-    expect(insights.averagePerDay).toBeNull();
+    expect(insights.label).toBe('Today');
+    expect(insights.series.map(({ total }) => total)).toEqual([0, 4000]);
   });
 
   describe('when an older period is selected', () => {
@@ -180,9 +228,9 @@ describe('buildInsights', () => {
 
     expect(insights).toMatchObject({
       selectedStart: 20261101,
-      total: 0,
-      count: 0,
-      breakdown: [],
+      series: [{ total: 0 }, { total: 0 }],
+      scaleMax: 100,
+      breakdown: { expense: [], income: [] },
       canGoBack: false,
       canGoForward: false,
     });
@@ -208,10 +256,19 @@ function createQuery(overrides: Partial<InsightsQuery> = {}): InsightsQuery {
     transactions: TRANSACTIONS,
     categories: createCatalog([]),
     granularity: Granularity.Month,
-    kind: TransactionKind.Expense,
     selectedStart: null,
     categoryId: null,
     today: TODAY,
     ...overrides,
   };
+}
+
+function toRows(
+  items: ReturnType<typeof buildInsights>['breakdown'][TransactionKind],
+): Array<[string, number, number]> {
+  return items.map(({ category, amount, share }) => [
+    category.label,
+    amount,
+    share,
+  ]);
 }

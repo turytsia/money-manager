@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { css, cx } from '@emotion/css';
 import { Pencil, Plus } from 'lucide-react';
-import { canHideCategory, type Category } from '../../utilities/categories';
+import type { Category } from '../../utilities/categories';
 import { CARD_STYLE } from '../../utilities/styles';
 import { TransactionKind, type CustomCategory } from '../../utilities/types';
 import { Button, ButtonVariant } from '../Button/Button';
@@ -99,10 +99,6 @@ const styles = {
       color: var(--color-fg);
     }
   `,
-  alwaysShown: css`
-    color: var(--color-fg-tertiary);
-    font-size: 12px;
-  `,
 };
 
 export interface CategoryManagerSheetProps {
@@ -121,6 +117,8 @@ interface CategoryManagerProps {
 interface CategoryRowProps {
   category: Category;
   isShown: boolean;
+  /** True for the last category still shown, which cannot be turned off. */
+  isLocked: boolean;
   onToggle: (category: Category, isShown: boolean) => void;
   onEdit: (category: Category) => void;
 }
@@ -158,6 +156,10 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
   const [editorTarget, setEditorTarget] = React.useState<EditorTarget | null>(
     null,
   );
+  const listed = categories.byKind[kind].filter(
+    ({ isFallback }) => !isFallback,
+  );
+  const shownCount = categories.visibleByKind[kind].length;
 
   const handleToggle = (category: Category, isShown: boolean): void => {
     if (!store.setCategoryHidden(category.id, !isShown)) {
@@ -187,15 +189,18 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
         onChange={setKind}
       />
       <p className={styles.hint}>
-        Turn off the ones you don&apos;t use. Transactions you already have keep
-        their category.
+        Turn off the ones you don&apos;t use; at least one stays on.
+        Transactions you already have keep their category.
       </p>
       <div className={styles.list}>
-        {categories.byKind[kind].map((category) => (
+        {listed.map((category) => (
           <CategoryRow
             key={category.id}
             category={category}
             isShown={!categories.hiddenIds.has(category.id)}
+            isLocked={
+              shownCount === 1 && !categories.hiddenIds.has(category.id)
+            }
             onToggle={handleToggle}
             onEdit={(edited) => setEditorTarget({ category: edited })}
           />
@@ -221,6 +226,7 @@ const CategoryManager: React.FC<CategoryManagerProps> = ({
 const CategoryRow: React.FC<CategoryRowProps> = ({
   category,
   isShown,
+  isLocked,
   onToggle,
   onEdit,
 }) => {
@@ -240,15 +246,12 @@ const CategoryRow: React.FC<CategoryRowProps> = ({
           <Pencil size={16} aria-hidden='true' />
         </button>
       )}
-      {canHideCategory(category.id) ? (
-        <Switch
-          label={`Show ${category.label}`}
-          isOn={isShown}
-          onChange={(isOn) => onToggle(category, isOn)}
-        />
-      ) : (
-        <span className={styles.alwaysShown}>Always shown</span>
-      )}
+      <Switch
+        label={`Show ${category.label}`}
+        isOn={isShown}
+        isDisabled={isLocked}
+        onChange={(isOn) => onToggle(category, isOn)}
+      />
     </div>
   );
 };

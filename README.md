@@ -4,7 +4,7 @@ A fast, private expense tracker that installs on an iPhone from the browser.
 
 - **Quick entry.** The app opens on the keypad. Type an amount, pick a category, tap Add.
 - **Your own categories.** Hide the ones you don't use and add your own, with a name and an icon.
-- **Insights.** Totals by day, week, month and year, split by category.
+- **Insights.** What you earned and spent by day, week, month and year, in one chart, split by category.
 - **Works offline.** The app runs from the device and needs no connection.
 - **Cloud sync.** Optional. Keeps a copy of the data off the phone and in step between devices.
 - **Backup.** Export everything to a file and import it again on any device.
@@ -67,9 +67,14 @@ All reading and writing goes through `src/utilities/storage.ts` and `src/utiliti
 
 ### Categories
 
-Built-in categories are fixed, but any of them except **Other** can be turned off, which
-only hides them when adding. Custom categories have ids from 1000 up. Deleting a custom
-category moves its transactions to **Other** of the same type (expense or income).
+Categories are managed from the **Edit** tile on the Add screen. Built-in categories are
+fixed, but any of them can be turned off, which only hides them when adding; one category
+of each type (expense or income) always stays on. Custom categories have ids from 1000 up.
+
+A transaction whose category was deleted, or is not known, is shown as **Uncategorized**.
+It is not a category you can pick: it only appears on such transactions. It is saved
+under the names `other` and `other-income`, which older versions used for an "Other"
+category, so their data still reads.
 
 ### Backup file format
 

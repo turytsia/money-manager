@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
@@ -65,6 +71,22 @@ describe('App', () => {
       expect(
         within(insights).getByRole('button', { name: /Groceries/ }),
       ).toHaveTextContent('$12.50100%');
+    });
+
+    it('should not confirm it again after a visit to another tab', async () => {
+      const user = userEvent.setup();
+      render(<App />, { wrapper: Providers });
+
+      await addExpense(user);
+
+      expect(screen.getByText('Saved')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Activity' }));
+      await user.click(screen.getByRole('button', { name: 'Add' }));
+
+      await waitFor(() =>
+        expect(screen.queryByText('Saved')).not.toBeInTheDocument(),
+      );
     });
   });
 
@@ -235,17 +257,40 @@ describe('App', () => {
       expect(localStorage.getItem('mm:hidden')).toBe('[3]');
     });
 
-    it('should not offer a switch for Other, which always stays', async () => {
+    it('should keep the last category of a type on', async () => {
       const user = userEvent.setup();
+      localStorage.setItem('mm:hidden', '[2,3,4,5,6,7,8]');
       render(<App />, { wrapper: Providers });
 
       await user.click(screen.getByRole('button', { name: 'Edit categories' }));
       const manager = screen.getByRole('dialog', { name: 'Categories' });
 
       expect(
-        within(manager).queryByRole('switch', { name: 'Show Other' }),
+        within(manager).getByRole('switch', { name: 'Show Food' }),
+      ).toBeDisabled();
+      expect(
+        within(manager).getByRole('switch', { name: 'Show Groceries' }),
+      ).toBeEnabled();
+    });
+
+    it('should not list a category called Other', async () => {
+      const user = userEvent.setup();
+      render(<App />, { wrapper: Providers });
+
+      expect(
+        screen.queryByRole('radio', { name: 'Other' }),
       ).not.toBeInTheDocument();
-      expect(within(manager).getByText('Always shown')).toBeVisible();
+      expect(
+        screen.queryByRole('radio', { name: 'Uncategorized' }),
+      ).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Edit categories' }));
+      const manager = screen.getByRole('dialog', { name: 'Categories' });
+
+      expect(within(manager).queryByText('Other')).not.toBeInTheDocument();
+      expect(
+        within(manager).queryByText('Uncategorized'),
+      ).not.toBeInTheDocument();
     });
 
     it('should still show on a transaction that already has it', async () => {
@@ -267,7 +312,7 @@ describe('App', () => {
   });
 
   describe('when a custom category is deleted', () => {
-    it('should move its transactions to Other', async () => {
+    it('should keep its transactions as Uncategorized', async () => {
       const user = userEvent.setup();
       localStorage.setItem(
         'mm:categories',
@@ -276,10 +321,7 @@ describe('App', () => {
       localStorage.setItem('mm:tx:202611', '[["a1",23,1000,700]]');
       render(<App />, { wrapper: Providers });
 
-      await user.click(screen.getByRole('button', { name: 'Settings' }));
-      await user.click(
-        screen.getByRole('button', { name: 'Manage categories' }),
-      );
+      await user.click(screen.getByRole('button', { name: 'Edit categories' }));
       const manager = screen.getByRole('dialog', { name: 'Categories' });
       await user.click(
         within(manager).getByRole('button', { name: 'Edit Pets' }),
@@ -290,7 +332,9 @@ describe('App', () => {
       );
 
       expect(
-        within(editor).getByText(/Its 1 transaction will move to Other/),
+        within(editor).getByText(
+          /Its 1 transaction will be kept as Uncategorized/,
+        ),
       ).toBeVisible();
 
       await user.click(

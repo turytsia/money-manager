@@ -4,6 +4,7 @@ import { CategoryIcon } from '../../components/CategoryIcon/CategoryIcon';
 import { ProgressBar } from '../../components/ProgressBar/ProgressBar';
 import { formatMoney } from '../../utilities/money';
 import { CARD_STYLE, TABULAR_STYLE } from '../../utilities/styles';
+import { TransactionKind } from '../../utilities/types';
 import type { BreakdownItem } from './insights';
 
 const PERCENT = 100;
@@ -57,6 +58,13 @@ const styles = {
     font-size: 12px;
     font-weight: 400;
   `,
+  // The bars use the color of their series in the chart above.
+  [TransactionKind.Income]: css`
+    color: var(--color-series-earned);
+  `,
+  [TransactionKind.Expense]: css`
+    color: var(--color-series-spent);
+  `,
   empty: css`
     padding: 28px 16px;
     color: var(--color-fg-secondary);
@@ -84,9 +92,10 @@ interface BreakdownRowProps {
 }
 
 /**
- * Where the money of the selected period went, as ranked bars. Bars are
- * drawn against the largest category so they are easy to compare, and each
- * row also shows its share of the total. Tapping a row filters the chart.
+ * Where the money of the selected period went, or came from, as ranked
+ * bars. Bars are drawn against the largest category so they are easy to
+ * compare, and each row also shows its share of the total. Tapping a row
+ * filters the chart.
  */
 export const CategoryBreakdown: React.FC<CategoryBreakdownProps> = ({
   items,
@@ -149,6 +158,7 @@ const BreakdownRow: React.FC<BreakdownRowProps> = ({
           ratio={ratio}
           height={BAR_HEIGHT}
           label={`${category.label}: ${sharePercent}% of the total`}
+          className={styles[category.kind]}
         />
       </span>
     </button>

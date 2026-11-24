@@ -8,11 +8,10 @@ import {
   type SegmentedOption,
 } from '../../components/SegmentedControl/SegmentedControl';
 import {
-  useSettings,
   useCategories,
+  useSettings,
   useTransactions,
 } from '../../components/StoreProvider/StoreProvider';
-import { getCategory } from '../../utilities/categories';
 import { shiftBucket } from '../../utilities/dates';
 import { CARD_STYLE, LABEL_STYLE, SCREEN_STYLE } from '../../utilities/styles';
 import {
@@ -26,11 +25,6 @@ import { CategoryBreakdown } from './CategoryBreakdown';
 import { buildInsights } from './insights';
 import { PeriodSummary } from './PeriodSummary';
 
-const KIND_OPTIONS: ReadonlyArray<SegmentedOption<TransactionKind>> = [
-  { value: TransactionKind.Expense, label: 'Spent' },
-  { value: TransactionKind.Income, label: 'Earned' },
-];
-
 const GRANULARITY_OPTIONS: ReadonlyArray<SegmentedOption<Granularity>> = [
   { value: Granularity.Day, label: 'Day' },
   { value: Granularity.Week, label: 'Week' },
@@ -38,10 +32,7 @@ const GRANULARITY_OPTIONS: ReadonlyArray<SegmentedOption<Granularity>> = [
   { value: Granularity.Year, label: 'Year' },
 ];
 
-const CHART_TITLES: Readonly<Record<TransactionKind, string>> = {
-  [TransactionKind.Expense]: 'Spending over time',
-  [TransactionKind.Income]: 'Income over time',
-};
+const CHART_TITLE = 'Earned and spent over time';
 
 const styles = {
   summary: cx(
@@ -82,8 +73,9 @@ const styles = {
 };
 
 /**
- * Totals grouped by day, week, month or year, with the selected period
- * split by category. Tapping a category narrows everything to it.
+ * What was earned and spent, grouped by day, week, month or year, with the
+ * selected period split by category. Tapping a category narrows the chart
+ * to it.
  */
 export const InsightsScreen: React.FC = () => {
   const transactions = useTransactions();
@@ -91,7 +83,6 @@ export const InsightsScreen: React.FC = () => {
   const { currency } = useSettings();
   const today = useToday();
   const [granularity, setGranularity] = React.useState(Granularity.Month);
-  const [kind, setKind] = React.useState(TransactionKind.Expense);
   const [selectedStart, setSelectedStart] = React.useState<DayKey | null>(null);
   const [chosenCategoryId, setCategoryId] = React.useState<number | null>(null);
   // The filter turns itself off when its category gets deleted.
@@ -105,20 +96,15 @@ export const InsightsScreen: React.FC = () => {
     transactions,
     categories,
     granularity,
-    kind,
     selectedStart,
     categoryId,
     today,
   });
+  const earned = insights.breakdown[TransactionKind.Income];
 
   const handleGranularityChange = (next: Granularity): void => {
     setGranularity(next);
     setSelectedStart(null);
-  };
-
-  const handleKindChange = (next: TransactionKind): void => {
-    setKind(next);
-    setCategoryId(null);
   };
 
   const handleStep = (direction: -1 | 1): void => {
@@ -146,15 +132,7 @@ export const InsightsScreen: React.FC = () => {
 
   return (
     <section aria-label='Insights' className={SCREEN_STYLE}>
-      <ScreenHeader title='Insights'>
-        <SegmentedControl
-          label='Type'
-          options={KIND_OPTIONS}
-          value={kind}
-          isCompact
-          onChange={handleKindChange}
-        />
-      </ScreenHeader>
+      <ScreenHeader title='Insights' />
       <SegmentedControl
         label='Group by'
         options={GRANULARITY_OPTIONS}
@@ -164,25 +142,17 @@ export const InsightsScreen: React.FC = () => {
       <div className={styles.summary}>
         <PeriodSummary
           label={insights.label}
-          filterLabel={
-            categoryId === null
-              ? undefined
-              : getCategory(categories, categoryId).label
-          }
-          total={insights.total}
-          previousTotal={insights.previousTotal}
-          averagePerDay={insights.averagePerDay}
-          count={insights.count}
+          series={insights.series}
           granularity={granularity}
-          kind={kind}
           currency={currency}
           canGoBack={insights.canGoBack}
           canGoForward={insights.canGoForward}
           onStep={handleStep}
         />
         <BucketChart
-          title={CHART_TITLES[kind]}
+          title={CHART_TITLE}
           bars={insights.bars}
+          kinds={insights.series.map(({ kind }) => kind)}
           scaleMax={insights.scaleMax}
           selectedStart={insights.selectedStart}
           currency={currency}
@@ -191,7 +161,7 @@ export const InsightsScreen: React.FC = () => {
         <p className={styles.range}>{insights.rangeLabel}</p>
       </div>
       <div className={styles.sectionHeader}>
-        <h2 className={LABEL_STYLE}>By category</h2>
+        <h2 className={LABEL_STYLE}>Spent by category</h2>
         {categoryId !== null && (
           <button
             type='button'
@@ -203,11 +173,24 @@ export const InsightsScreen: React.FC = () => {
         )}
       </div>
       <CategoryBreakdown
-        items={insights.breakdown}
+        items={insights.breakdown[TransactionKind.Expense]}
         currency={currency}
         selectedCategoryId={categoryId}
         onToggle={handleCategoryToggle}
       />
+      {earned.length > 0 && (
+        <>
+          <div className={styles.sectionHeader}>
+            <h2 className={LABEL_STYLE}>Earned by category</h2>
+          </div>
+          <CategoryBreakdown
+            items={earned}
+            currency={currency}
+            selectedCategoryId={categoryId}
+            onToggle={handleCategoryToggle}
+          />
+        </>
+      )}
     </section>
   );
 };

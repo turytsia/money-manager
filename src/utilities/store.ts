@@ -81,7 +81,7 @@ export interface Store {
    * it, or undefined when it could not be saved.
    */
   saveCategory: (draft: CategoryDraft) => CustomCategory | undefined;
-  /** Deletes a custom category and moves its transactions to Other. */
+  /** Deletes a custom category. Its transactions become Uncategorized. */
   deleteCategory: (id: number) => boolean;
   /** Shows or hides a category in the list offered when adding. */
   setCategoryHidden: (id: number, isHidden: boolean) => boolean;
@@ -284,7 +284,13 @@ export function createStore(): Store {
       );
     },
     setCategoryHidden: (id, isHidden) => {
-      if (!canHideCategory(id) || !state.categories.byId.has(id)) {
+      const category = state.categories.byId.get(id);
+      if (!category || !canHideCategory(id)) {
+        return false;
+      }
+      // The last category of a kind stays on, so there is one to pick.
+      const shown = state.categories.visibleByKind[category.kind];
+      if (isHidden && shown.length === 1 && shown[0].id === id) {
         return false;
       }
       const hiddenIds = new Set(state.categories.hiddenIds);
@@ -524,7 +530,7 @@ function getDifference(previous: AppState, next: AppState): DataChange {
   };
 }
 
-/** A transaction whose category no longer exists is counted as Other. */
+/** A transaction whose category no longer exists is Uncategorized. */
 function withKnownCategory<T extends { categoryId: number }>(
   item: T,
   categories: CategoryCatalog,
