@@ -5,3 +5,4 @@ coverage
 .eslintcache
 *.local
 .DS_Store
+.sync-data

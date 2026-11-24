@@ -54,18 +54,34 @@ const CONFIRMATION = keyframes`
 `;
 
 const styles = {
-  // Fills the screen exactly. When space runs short, the category grid
-  // shrinks and scrolls before anything else does.
+  // Fills the space it is given, top to bottom. The keypad and the save
+  // button sit at the bottom and never move or get covered.
   root: css`
     display: flex;
     flex: 1 1 auto;
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
     min-height: 0;
+  `,
+  // Everything above the keypad. It takes whatever height is left: the
+  // amount grows into spare room, the categories give room back, and on a
+  // screen too small for even that, this part scrolls.
+  fields: css`
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+    /* Widened to the screen edges so the amount's backdrop is not cut off. */
+    margin: 0 -16px;
+    padding: 0 16px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
 
-    /* Tighter on short screens, so the form still fits without scrolling. */
-    @media (max-height: 700px) {
-      gap: 9px;
+    &::-webkit-scrollbar {
+      display: none;
     }
   `,
   header: css`
@@ -74,10 +90,10 @@ const styles = {
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    min-height: 40px;
+    min-height: 36px;
   `,
   title: css`
-    font-size: 24px;
+    font-size: 22px;
     font-weight: 600;
     line-height: 1.15;
     letter-spacing: -0.04em;
@@ -87,8 +103,12 @@ const styles = {
     flex-shrink: 0;
     gap: 8px;
   `,
+  action: css`
+    height: 48px;
+  `,
   deleteButton: css`
-    width: 52px;
+    width: 48px;
+    height: 48px;
     padding: 0;
   `,
   // Briefly covers the button after a save, as feedback right where the
@@ -150,11 +170,18 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
   const isEditing = transaction !== undefined;
   const amount = parseAmountText(amountText);
   const Heading = isEditing ? 'h2' : 'h1';
-  // The chosen category may have been deleted since it was picked.
-  const categoryId =
-    categories.byId.get(chosenCategoryId)?.kind === kind
-      ? chosenCategoryId
-      : getLastUsedCategoryId(store.getState().transactions, kind, categories);
+  // A hidden category is still offered while editing a transaction that
+  // already has it, so opening one never changes its category by itself.
+  const keptCategoryId = transaction?.categoryId;
+  // The chosen category may have been hidden or deleted since it was picked.
+  const categoryId = isSelectable(
+    chosenCategoryId,
+    kind,
+    categories,
+    keptCategoryId,
+  )
+    ? chosenCategoryId
+    : getLastUsedCategoryId(store.getState().transactions, kind, categories);
 
   const handleKey = (key: KeypadKey): void => {
     setAmountText((text) => applyKey(text, key));
@@ -212,28 +239,33 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
 
   return (
     <div ref={root} className={styles.root}>
-      <header className={styles.header}>
-        <Heading className={styles.title}>{getTitle(isEditing, kind)}</Heading>
-        <SegmentedControl
-          label='Type'
-          options={KIND_OPTIONS}
-          value={kind}
-          isCompact
-          onChange={handleKindChange}
+      <div className={styles.fields}>
+        <header className={styles.header}>
+          <Heading className={styles.title}>
+            {getTitle(isEditing, kind)}
+          </Heading>
+          <SegmentedControl
+            label='Type'
+            options={KIND_OPTIONS}
+            value={kind}
+            isCompact
+            onChange={handleKindChange}
+          />
+        </header>
+        <AmountDisplay
+          key={savedCount}
+          text={amountText}
+          symbol={getCurrencySymbol(currency)}
+          caption={caption}
         />
-      </header>
-      <AmountDisplay
-        key={savedCount}
-        text={amountText}
-        symbol={getCurrencySymbol(currency)}
-        caption={caption}
-      />
-      <DateSelector day={day} today={today} onChange={setDay} />
-      <CategoryGrid
-        kind={kind}
-        selectedId={categoryId}
-        onSelect={setCategoryId}
-      />
+        <DateSelector day={day} today={today} onChange={setDay} />
+        <CategoryGrid
+          kind={kind}
+          selectedId={categoryId}
+          keptId={keptCategoryId}
+          onSelect={setCategoryId}
+        />
+      </div>
       <Keypad onKey={handleKey} />
       <div className={styles.actions}>
         {onDelete && (
@@ -252,6 +284,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({
           isLarge
           isBlock
           disabled={amount === 0}
+          className={styles.action}
           onClick={handleSubmit}
         >
           {getSubmitLabel(isEditing, kind)}
@@ -285,16 +318,30 @@ function getSubmitLabel(isEditing: boolean, kind: TransactionKind): string {
   return kind === TransactionKind.Expense ? 'Add expense' : 'Add income';
 }
 
-/** Starts on the category of the most recent transaction of that kind. */
+function isSelectable(
+  categoryId: number,
+  kind: TransactionKind,
+  categories: CategoryCatalog,
+  keptCategoryId: number | undefined,
+): boolean {
+  const isShown =
+    !categories.hiddenIds.has(categoryId) || categoryId === keptCategoryId;
+  return isShown && categories.byId.get(categoryId)?.kind === kind;
+}
+
+/**
+ * Starts on the category of the most recent transaction of that kind,
+ * skipping categories that have been turned off.
+ */
 function getLastUsedCategoryId(
   transactions: ReadonlyArray<Transaction>,
   kind: TransactionKind,
   categories: CategoryCatalog,
 ): number {
-  const lastUsed = transactions.find(
-    (transaction) => getKind(transaction, categories) === kind,
+  const lastUsed = transactions.find((transaction) =>
+    isSelectable(transaction.categoryId, kind, categories, undefined),
   );
-  return lastUsed?.categoryId ?? categories.byKind[kind][0].id;
+  return lastUsed?.categoryId ?? categories.visibleByKind[kind][0].id;
 }
 
 function toKeypadKey(key: string): KeypadKey | undefined {

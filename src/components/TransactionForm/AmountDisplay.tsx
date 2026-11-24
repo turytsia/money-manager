@@ -34,11 +34,11 @@ const styles = {
     align-items: center;
     justify-content: center;
     gap: 8px;
-    min-height: 84px;
+    min-height: 92px;
     animation: ${FADE_IN} 240ms ease-out;
 
     @media (max-height: 700px) {
-      min-height: 64px;
+      min-height: 76px;
     }
 
     /* A faint dot grid that fades out toward the edges. */
@@ -70,16 +70,28 @@ const styles = {
     position: relative;
     display: flex;
     align-items: center;
-    font-size: clamp(52px, 17vw, 76px);
+    font-size: clamp(48px, 15vw, 64px);
     font-weight: 600;
     line-height: 1;
     letter-spacing: -0.05em;
+
+    @media (max-height: 700px) {
+      font-size: clamp(40px, 12vw, 48px);
+    }
   `,
   amountMedium: css`
-    font-size: clamp(42px, 13vw, 58px);
+    font-size: clamp(40px, 12vw, 52px);
+
+    @media (max-height: 700px) {
+      font-size: clamp(34px, 10vw, 42px);
+    }
   `,
   amountSmall: css`
-    font-size: clamp(32px, 9.5vw, 44px);
+    font-size: clamp(30px, 9vw, 40px);
+
+    @media (max-height: 700px) {
+      font-size: clamp(28px, 8.4vw, 36px);
+    }
   `,
   amountEmpty: css`
     color: var(--color-fg-tertiary);

@@ -17,7 +17,7 @@ import { BackupSection } from './BackupSection';
 import { CategoriesSection } from './CategoriesSection';
 import { EraseSection } from './EraseSection';
 import { SettingsSection } from './SettingsSection';
-import { StorageMeter } from './StorageMeter';
+import { SyncSection } from './SyncSection';
 
 const THEME_OPTIONS: ReadonlyArray<SegmentedOption<ThemePreference>> = [
   { value: ThemePreference.System, label: 'System', icon: Monitor },
@@ -124,9 +124,7 @@ export const SettingsScreen: React.FC = () => {
         </p>
       </SettingsSection>
       <CategoriesSection />
-      <SettingsSection title='Storage'>
-        <StorageMeter />
-      </SettingsSection>
+      <SyncSection />
       <BackupSection />
       {!IS_INSTALLED && (
         <SettingsSection title='Install on iPhone'>

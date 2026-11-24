@@ -7,8 +7,6 @@ import {
   getMonthEntries,
   loadCustomCategories,
   loadTransactions,
-  measureStorage,
-  STORAGE_QUOTA_BYTES,
   writeEntries,
 } from './storage';
 import { TransactionKind } from './types';
@@ -148,19 +146,6 @@ describe('storage', () => {
       writeEntries(getCategoryEntries([]));
 
       expect(localStorage.getItem('mm:categories')).toBeNull();
-    });
-  });
-
-  it('should measure used space at two bytes per saved character', () => {
-    writeEntries(getMonthEntries([createTransaction()], [202611]));
-
-    // The key has 12 characters and the value 18.
-    expect(measureStorage(1)).toEqual({
-      usedBytes: 60,
-      freeBytes: STORAGE_QUOTA_BYTES - 60,
-      quotaBytes: STORAGE_QUOTA_BYTES,
-      usedRatio: 60 / STORAGE_QUOTA_BYTES,
-      remainingTransactions: 87380,
     });
   });
 });

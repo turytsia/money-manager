@@ -16,13 +16,16 @@ import type { TransactionInput } from '../../utilities/types';
 import { SpendingSummary } from './SpendingSummary';
 
 const styles = {
-  // The form fills the screen exactly, so nothing needs scrolling on a phone.
+  // The form fills the space between the status bar and the tab bar
+  // exactly, so its save button can never end up under the tab bar.
   root: cx(
     SCREEN_STYLE,
     css`
       display: flex;
       flex-direction: column;
-      padding-bottom: calc(var(--tab-bar-height) + var(--safe-bottom) + 12px);
+      padding-top: calc(var(--safe-top) + 12px);
+      padding-bottom: calc(var(--tab-bar-height) + var(--safe-bottom) + 10px);
+      overflow: hidden;
     `,
   ),
 };

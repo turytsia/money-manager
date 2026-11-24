@@ -1,21 +1,18 @@
-import { isCategoryId, parseCustomCategories } from './categories';
+import {
+  isCategoryId,
+  parseCategoryIds,
+  parseCustomCategories,
+} from './categories';
 import { getMonthKey, isValidDayKey } from './dates';
+import { parsePendingChanges } from './sync/pendingChanges';
 import { isValidAmount, sortTransactions } from './transactions';
-import type { CustomCategory, Settings, Transaction } from './types';
-
-/**
- * Browsers give each site about 5 MB of local storage. Counting two bytes
- * per character is the strictest way a browser counts it, so the space left
- * is never overstated.
- */
-export const STORAGE_QUOTA_BYTES = 5 * 1024 * 1024;
-
-const BYTES_PER_CHARACTER = 2;
-const TYPICAL_TRANSACTION_BYTES = 50;
+import type { CustomCategory, Settings, SyncState, Transaction } from './types';
 
 // Sites on the same origin share storage, so every key carries a prefix.
 const SETTINGS_KEY = 'mm:settings';
 const CATEGORIES_KEY = 'mm:categories';
+const HIDDEN_CATEGORIES_KEY = 'mm:hidden';
+const SYNC_KEY = 'mm:sync';
 const MONTH_KEY_PREFIX = 'mm:tx:';
 
 /** One transaction as saved: [id, day of month, category id, amount]. */
@@ -23,15 +20,6 @@ type StoredTransaction = [string, number, number, number];
 
 /** What to save, by storage key. A null value removes the key. */
 export type StorageEntries = ReadonlyMap<string, string | null>;
-
-export interface StorageUsage {
-  usedBytes: number;
-  freeBytes: number;
-  quotaBytes: number;
-  usedRatio: number;
-  /** A rough count of how many more transactions will fit. */
-  remainingTransactions: number;
-}
 
 export function loadTransactions(): Array<Transaction> {
   const transactions = getStorageKeys()
@@ -52,6 +40,32 @@ export function loadSettings(): Partial<Settings> {
 
 export function loadCustomCategories(): Array<CustomCategory> {
   return parseCustomCategories(parseJson(localStorage.getItem(CATEGORIES_KEY)));
+}
+
+export function loadHiddenCategoryIds(): Array<number> {
+  return parseCategoryIds(
+    parseJson(localStorage.getItem(HIDDEN_CATEGORIES_KEY)),
+  );
+}
+
+/** Returns null when cloud sync is off. */
+export function loadSyncState(): SyncState | null {
+  const saved = parseJson(localStorage.getItem(SYNC_KEY));
+  if (typeof saved !== 'object' || saved === null) {
+    return null;
+  }
+  const { token, version, syncedAt, pending } = saved as Partial<
+    Record<keyof SyncState, unknown>
+  >;
+  if (typeof token !== 'string' || token === '') {
+    return null;
+  }
+  return {
+    token,
+    version: typeof version === 'string' ? version : null,
+    syncedAt: typeof syncedAt === 'number' ? syncedAt : null,
+    pending: parsePendingChanges(pending),
+  };
 }
 
 /**
@@ -103,6 +117,19 @@ export function getCategoryEntries(
   ]);
 }
 
+export function getHiddenCategoryEntries(
+  hiddenCategoryIds: Iterable<number>,
+): StorageEntries {
+  const ids = [...hiddenCategoryIds];
+  return new Map([
+    [HIDDEN_CATEGORIES_KEY, ids.length > 0 ? JSON.stringify(ids) : null],
+  ]);
+}
+
+export function getSyncEntries(sync: SyncState | null): StorageEntries {
+  return new Map([[SYNC_KEY, sync ? JSON.stringify(sync) : null]]);
+}
+
 /**
  * Writes all entries as one step. If any write fails (for example because
  * storage is full), everything is put back as it was and the error is
@@ -123,32 +150,6 @@ export function writeEntries(...groups: Array<StorageEntries>): void {
     previous.forEach((value, key) => writeEntry(key, value));
     throw error;
   }
-}
-
-export function measureStorage(transactionCount: number): StorageUsage {
-  let usedBytes = 0;
-  let transactionBytes = 0;
-  getStorageKeys().forEach((key) => {
-    const size =
-      (key.length + (localStorage.getItem(key)?.length ?? 0)) *
-      BYTES_PER_CHARACTER;
-    usedBytes += size;
-    if (key.startsWith(MONTH_KEY_PREFIX)) {
-      transactionBytes += size;
-    }
-  });
-  const freeBytes = Math.max(0, STORAGE_QUOTA_BYTES - usedBytes);
-  const bytesPerTransaction =
-    transactionCount > 0
-      ? transactionBytes / transactionCount
-      : TYPICAL_TRANSACTION_BYTES;
-  return {
-    usedBytes,
-    freeBytes,
-    quotaBytes: STORAGE_QUOTA_BYTES,
-    usedRatio: Math.min(1, usedBytes / STORAGE_QUOTA_BYTES),
-    remainingTransactions: Math.floor(freeBytes / bytesPerTransaction),
-  };
 }
 
 /** Returns null for an empty month, which removes its key. */

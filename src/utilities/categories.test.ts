@@ -1,13 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import {
+  canHideCategory,
   createCatalog,
   createCategoryId,
   getCategory,
   normalizeLabel,
+  parseCategoryIds,
   parseCustomCategories,
+  parseCustomSlug,
   validateCategoryLabel,
 } from './categories';
 import { TransactionKind, type CustomCategory } from './types';
+
+const TRANSPORT = 3;
+const OTHER = 9;
 
 const COFFEE: CustomCategory = {
   id: 1000,
@@ -59,6 +65,41 @@ describe('categories', () => {
     });
   });
 
+  describe('when categories are hidden', () => {
+    it('should leave them out of what is offered but keep them known', () => {
+      const catalog = createCatalog([COFFEE], [TRANSPORT, COFFEE.id]);
+
+      expect(
+        catalog.visibleByKind[TransactionKind.Expense].map(
+          ({ label }) => label,
+        ),
+      ).toEqual([
+        'Food',
+        'Groceries',
+        'Home',
+        'Bills',
+        'Health',
+        'Fun',
+        'Shopping',
+        'Other',
+      ]);
+      expect(getCategory(catalog, TRANSPORT).label).toBe('Transport');
+      expect(catalog.byKind[TransactionKind.Expense]).toHaveLength(10);
+    });
+
+    it('should never hide Other, so there is always something to pick', () => {
+      const catalog = createCatalog([], [OTHER, 13]);
+
+      expect(catalog.hiddenIds.size).toBe(0);
+      expect(canHideCategory(OTHER)).toBe(false);
+      expect(canHideCategory(TRANSPORT)).toBe(true);
+    });
+
+    it('should forget hidden ids of categories that no longer exist', () => {
+      expect(createCatalog([], [COFFEE.id]).hiddenIds.size).toBe(0);
+    });
+  });
+
   it('should show an unknown category as Other', () => {
     expect(getCategory(createCatalog([]), 1000)).toMatchObject({
       slug: 'other',
@@ -66,9 +107,20 @@ describe('categories', () => {
     });
   });
 
-  it('should give a new custom category the next free id', () => {
-    expect(createCategoryId([])).toBe(1000);
-    expect(createCategoryId([COFFEE, TIPS])).toBe(1002);
+  describe('when an id for a new custom category is made', () => {
+    it('should base it on the time, so two devices do not pick the same', () => {
+      const fiveSecondsIn = Date.UTC(2025, 0, 1, 0, 0, 5);
+
+      expect(createCategoryId([], fiveSecondsIn)).toBe(1005);
+    });
+
+    it('should stay above every id that is already in use', () => {
+      const future = { ...COFFEE, id: 9_000_000_000 };
+
+      expect(createCategoryId([future], Date.UTC(2026, 0, 1))).toBe(
+        9_000_000_001,
+      );
+    });
   });
 
   it('should tidy up spaces in a name', () => {
@@ -76,13 +128,18 @@ describe('categories', () => {
   });
 
   describe('when a name is checked', () => {
-    const catalog = createCatalog([COFFEE]);
+    const catalog = createCatalog([COFFEE], [TRANSPORT]);
 
     it.each([
       ['an empty name', '   ', 'Enter a name'],
       [
         'the name of a built-in category',
         'groceries',
+        'A category with this name already exists',
+      ],
+      [
+        'the name of a hidden category',
+        'Transport',
         'A category with this name already exists',
       ],
       [
@@ -137,5 +194,19 @@ describe('categories', () => {
     it('should read anything that is not a list as no categories', () => {
       expect(parseCustomCategories({ id: 1000 })).toEqual([]);
     });
+  });
+
+  it('should read a saved list of ids, leaving out anything else', () => {
+    expect(parseCategoryIds([3, 3, 'x', -1, 1000])).toEqual([3, 1000]);
+    expect(parseCategoryIds('3')).toEqual([]);
+  });
+
+  it.each([
+    ['custom-1000', 1000],
+    ['custom-12', undefined],
+    ['custom-abc', undefined],
+    ['food', undefined],
+  ])('should read the id in the slug "%s" as %s', (slug, expected) => {
+    expect(parseCustomSlug(slug)).toBe(expected);
   });
 });

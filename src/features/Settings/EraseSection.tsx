@@ -7,10 +7,12 @@ import {
   useStore,
   useTransactions,
 } from '../../components/StoreProvider/StoreProvider';
+import { useSyncStatus } from '../../components/SyncEngineProvider/SyncEngineProvider';
 import {
   ToastTone,
   useToast,
 } from '../../components/ToastProvider/ToastProvider';
+import { SyncPhase } from '../../utilities/sync/syncEngine';
 import { formatCount } from '../../utilities/text';
 import { SettingsSection } from './SettingsSection';
 
@@ -70,6 +72,7 @@ const EraseConfirmation: React.FC<EraseConfirmationProps> = ({
   const store = useStore();
   const showToast = useToast();
   const closeSheet = useSheetClose();
+  const isSyncOn = useSyncStatus().phase !== SyncPhase.Off;
   const categoriesText =
     categoryCount > 0
       ? ` and ${formatCount(categoryCount, 'custom category', 'custom categories')}`
@@ -90,8 +93,9 @@ const EraseConfirmation: React.FC<EraseConfirmationProps> = ({
       <h2 className={styles.title}>Erase all data?</h2>
       <p className={styles.description}>
         This removes {formatCount(transactionCount, 'transaction')}
-        {categoriesText} from this device. Settings are kept. It cannot be
-        undone, so export a backup first if you might want them back.
+        {categoriesText} from this device
+        {isSyncOn && ' and from the cloud copy'}. Settings are kept. It cannot
+        be undone, so export a backup first if you might want them back.
       </p>
       <div className={styles.actions}>
         <Button variant={ButtonVariant.Danger} isLarge onClick={handleErase}>

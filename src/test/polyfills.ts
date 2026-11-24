@@ -1,3 +1,5 @@
+import { webcrypto } from 'node:crypto';
+
 // The test browser (jsdom) has no AnimationEvent. Without it React listens
 // for a legacy event name, and `fireEvent.animationEnd` would do nothing.
 // This must run before React loads, so it has its own setup file.
@@ -18,3 +20,11 @@ window.AnimationEvent ??= AnimationEventPolyfill;
 
 // jsdom does no layout, so it has no scrolling either.
 Element.prototype.scrollIntoView ??= function scrollIntoView(): void {};
+
+// jsdom has no WebCrypto, which the app uses to hash the sync password.
+if (!window.crypto?.subtle) {
+  Object.defineProperty(window, 'crypto', {
+    value: webcrypto,
+    configurable: true,
+  });
+}

@@ -12,6 +12,10 @@ export const MAX_CATEGORY_LABEL_LENGTH = 24;
 /** Custom category ids start here, leaving room for more built-in ones. */
 export const FIRST_CUSTOM_CATEGORY_ID = 1000;
 
+/** New custom ids count seconds from this moment (1 January 2025, UTC). */
+const CATEGORY_ID_EPOCH = Date.UTC(2025, 0, 1);
+const MILLISECONDS_PER_SECOND = 1000;
+
 const OTHER_EXPENSE = builtIn(
   9,
   'other',
@@ -87,22 +91,47 @@ export interface CategoryCatalog {
   readonly byId: ReadonlyMap<number, Category>;
   /** The order categories are offered in: built-in, then custom, then Other. */
   readonly byKind: Readonly<Record<TransactionKind, ReadonlyArray<Category>>>;
+  /** Categories the user turned off. Their transactions are unaffected. */
+  readonly hiddenIds: ReadonlySet<number>;
+  /** The categories offered when adding a transaction. */
+  readonly visibleByKind: Readonly<
+    Record<TransactionKind, ReadonlyArray<Category>>
+  >;
 }
 
 export function createCatalog(
   customCategories: ReadonlyArray<CustomCategory>,
+  hiddenCategoryIds: Iterable<number> = [],
 ): CategoryCatalog {
   const custom = customCategories.map(toCategory);
   const all = [...BUILT_IN_CATEGORIES, ...custom];
+  const byId = new Map(all.map((category) => [category.id, category]));
+  const hiddenIds = new Set(
+    [...hiddenCategoryIds].filter((id) => byId.has(id) && canHideCategory(id)),
+  );
+  const byKind = {
+    [TransactionKind.Expense]: orderForKind(TransactionKind.Expense, custom),
+    [TransactionKind.Income]: orderForKind(TransactionKind.Income, custom),
+  };
+  const isVisible = ({ id }: Category): boolean => !hiddenIds.has(id);
   return {
     all,
     customCategories,
-    byId: new Map(all.map((category) => [category.id, category])),
-    byKind: {
-      [TransactionKind.Expense]: orderForKind(TransactionKind.Expense, custom),
-      [TransactionKind.Income]: orderForKind(TransactionKind.Income, custom),
+    byId,
+    byKind,
+    hiddenIds,
+    visibleByKind: {
+      [TransactionKind.Expense]:
+        byKind[TransactionKind.Expense].filter(isVisible),
+      [TransactionKind.Income]:
+        byKind[TransactionKind.Income].filter(isVisible),
     },
   };
+}
+
+/** "Other" always stays, so there is always a category to pick. */
+export function canHideCategory(id: number): boolean {
+  return id !== OTHER_EXPENSE.id && id !== OTHER_INCOME.id;
 }
 
 /** Looks up a category. An unknown id is shown as Other. */
@@ -122,15 +151,22 @@ export function getCustomSlug(id: number): string {
   return `${CUSTOM_SLUG_PREFIX}${id}`;
 }
 
+/**
+ * Ids are based on the time, so two devices that each create a category
+ * before syncing do not end up using the same id for different things.
+ */
 export function createCategoryId(
   customCategories: ReadonlyArray<CustomCategory>,
+  timestamp: number,
 ): number {
-  return (
-    customCategories.reduce(
-      (highest, { id }) => Math.max(highest, id),
-      FIRST_CUSTOM_CATEGORY_ID - 1,
-    ) + 1
+  const highestId = customCategories.reduce(
+    (highest, { id }) => Math.max(highest, id),
+    FIRST_CUSTOM_CATEGORY_ID - 1,
   );
+  const secondsSinceEpoch = Math.floor(
+    (timestamp - CATEGORY_ID_EPOCH) / MILLISECONDS_PER_SECOND,
+  );
+  return Math.max(highestId + 1, FIRST_CUSTOM_CATEGORY_ID + secondsSinceEpoch);
 }
 
 /** Trims a name and turns runs of spaces into one space. */
@@ -198,6 +234,20 @@ export function parseCustomCategories(value: unknown): Array<CustomCategory> {
     ({ id }, index) =>
       categories.findIndex((category) => category.id === id) === index,
   );
+}
+
+/** Reads a saved list of category ids, leaving out anything else. */
+export function parseCategoryIds(value: unknown): Array<number> {
+  return Array.isArray(value) ? [...new Set(value.filter(isCategoryId))] : [];
+}
+
+/** The custom category id inside a slug such as "custom-1000", if any. */
+export function parseCustomSlug(slug: string): number | undefined {
+  if (!slug.startsWith(CUSTOM_SLUG_PREFIX)) {
+    return undefined;
+  }
+  const id = Number(slug.slice(CUSTOM_SLUG_PREFIX.length));
+  return isCategoryId(id) && id >= FIRST_CUSTOM_CATEGORY_ID ? id : undefined;
 }
 
 function toCustomCategory(value: unknown): CustomCategory | undefined {

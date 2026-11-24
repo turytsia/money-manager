@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { css, cx } from '@emotion/css';
+import { css } from '@emotion/css';
 
 const PERCENT = 100;
 
@@ -21,19 +21,7 @@ const styles = {
     fill: currentColor;
     transition: width 400ms var(--ease-out);
   `,
-  warning: css`
-    color: var(--color-warning);
-  `,
-  danger: css`
-    color: var(--color-danger);
-  `,
 };
-
-export enum ProgressTone {
-  Neutral = 'neutral',
-  Warning = 'warning',
-  Danger = 'danger',
-}
 
 export interface ProgressBarProps {
   /** How full the bar is, from 0 to 1. */
@@ -41,14 +29,12 @@ export interface ProgressBarProps {
   /** Says what the bar shows, for screen readers. */
   label: string;
   height?: number;
-  tone?: ProgressTone;
 }
 
 export const ProgressBar: React.FC<ProgressBarProps> = ({
   ratio,
   label,
   height = 8,
-  tone = ProgressTone.Neutral,
 }) => {
   const percent = toPercent(ratio);
 
@@ -60,11 +46,7 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
       aria-valuemax={PERCENT}
       aria-valuenow={Math.round(percent)}
       height={height}
-      className={cx(
-        styles.root,
-        tone === ProgressTone.Warning && styles.warning,
-        tone === ProgressTone.Danger && styles.danger,
-      )}
+      className={styles.root}
     >
       <rect
         className={styles.track}

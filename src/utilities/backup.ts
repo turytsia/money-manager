@@ -5,6 +5,7 @@ import {
   getCustomSlug,
   getLabelKey,
   isTransactionKind,
+  parseCustomSlug,
   toCategoryLabel,
   type CategoryCatalog,
 } from './categories';
@@ -19,6 +20,7 @@ import { isValidAmount, isValidTransactionId } from './transactions';
 import type {
   AppState,
   CustomCategory,
+  DataSnapshot,
   DayKey,
   Transaction,
   TransactionKind,
@@ -33,6 +35,7 @@ const BACKUP_VERSION = 2;
 const READABLE_VERSIONS: ReadonlyArray<unknown> = [1, BACKUP_VERSION];
 
 const MAX_CATEGORY_KEY_LENGTH = 40;
+const FILE_INDENT = 2;
 
 /** A custom category in a backup file. Built-in ones are not listed. */
 interface BackupCategory {
@@ -51,12 +54,18 @@ interface BackupTransaction {
   amount: number;
 }
 
-interface BackupFile {
+/**
+ * The contents of a backup. The same document is what cloud sync keeps, so
+ * a copy taken from the cloud can be imported by hand like any backup.
+ */
+export interface BackupDocument {
   app: string;
   version: number;
   exportedAt: string;
   currency: string;
   categories?: Array<BackupCategory>;
+  /** Categories turned off in the app, by name or custom key. */
+  hiddenCategories?: Array<string>;
   transactions: Array<BackupTransaction>;
 }
 
@@ -78,6 +87,7 @@ export interface ImportedTransaction {
 
 export interface ParsedBackup {
   categories: Array<ImportedCategory>;
+  hiddenCategoryKeys: Array<string>;
   transactions: Array<ImportedTransaction>;
   /** Entries that were left out because they were not valid. */
   skippedCount: number;
@@ -87,12 +97,16 @@ export interface ParsedBackup {
 export interface ResolvedBackup {
   /** The custom categories of this device, plus new ones from the backup. */
   customCategories: Array<CustomCategory>;
+  /** The backup's hidden categories, as ids on this device. */
+  hiddenCategoryIds: Array<number>;
   transactions: Array<Transaction>;
 }
 
-export function createBackup(state: AppState, exportedAt: Date): string {
-  const { categories, settings, transactions } = state;
-  const backup: BackupFile = {
+export function createBackupDocument(
+  { transactions, settings, categories }: AppState,
+  exportedAt: Date,
+): BackupDocument {
+  return {
     app: BACKUP_APP_ID,
     version: BACKUP_VERSION,
     exportedAt: exportedAt.toISOString(),
@@ -105,6 +119,9 @@ export function createBackup(state: AppState, exportedAt: Date): string {
         icon,
       }),
     ),
+    hiddenCategories: [...categories.hiddenIds].map(
+      (id) => getCategory(categories, id).slug,
+    ),
     transactions: transactions.map(({ id, day, categoryId, amount }) => ({
       id,
       date: toIsoDate(day),
@@ -112,31 +129,51 @@ export function createBackup(state: AppState, exportedAt: Date): string {
       amount: amount / MINOR_UNITS,
     })),
   };
-  return JSON.stringify(backup, null, 2);
+}
+
+/** The text of a backup file. */
+export function createBackup(state: AppState, exportedAt: Date): string {
+  return JSON.stringify(
+    createBackupDocument(state, exportedAt),
+    null,
+    FILE_INDENT,
+  );
 }
 
 /** Returns undefined when the text is not a backup made by this app. */
 export function parseBackup(text: string): ParsedBackup | undefined {
-  const backup = parseBackupFile(text);
-  if (!backup) {
+  try {
+    return parseBackupDocument(JSON.parse(text));
+  } catch {
     return undefined;
   }
-  const categories = parseCategories(backup.categories);
+}
+
+/** Returns undefined when the value is not a backup made by this app. */
+export function parseBackupDocument(value: unknown): ParsedBackup | undefined {
+  if (!isBackupDocument(value)) {
+    return undefined;
+  }
+  const categories = parseCategories(value.categories);
   const customKeys = new Set(categories.map(({ key }) => key));
-  const parsed = backup.transactions.map((item) =>
-    toImportedTransaction(item, customKeys),
+  const isKnownKey = (key: unknown): key is string =>
+    typeof key === 'string' &&
+    (findBuiltInBySlug(key) !== undefined || customKeys.has(key));
+  const parsed = value.transactions.map((item) =>
+    toImportedTransaction(item, isKnownKey),
   );
   const valid = parsed.filter(
     (item): item is ImportedTransaction => item !== undefined,
   );
   return {
     categories,
+    hiddenCategoryKeys: Array.isArray(value.hiddenCategories)
+      ? value.hiddenCategories.filter(isKnownKey)
+      : [],
     // When two entries share an id, the later one wins.
     transactions: [...new Map(valid.map((item) => [item.id, item])).values()],
     skippedCount: parsed.length - valid.length,
-    currency: isSupportedCurrency(backup.currency)
-      ? backup.currency
-      : undefined,
+    currency: isSupportedCurrency(value.currency) ? value.currency : undefined,
   };
 }
 
@@ -148,6 +185,7 @@ export function parseBackup(text: string): ParsedBackup | undefined {
 export function resolveBackup(
   backup: ParsedBackup,
   categories: CategoryCatalog,
+  timestamp: number,
 ): ResolvedBackup {
   const customCategories = [...categories.customCategories];
   const idByLabelKey = new Map(
@@ -165,7 +203,7 @@ export function resolveBackup(
       continue;
     }
     const created: CustomCategory = {
-      id: createCategoryId(customCategories),
+      id: createCategoryId(customCategories, timestamp),
       kind,
       label,
       icon,
@@ -174,36 +212,59 @@ export function resolveBackup(
     idByLabelKey.set(labelKey, created.id);
     idByKey.set(key, created.id);
   }
-  const transactions = backup.transactions.flatMap(
-    ({ id, day, categoryKey, amount }) => {
-      const categoryId =
-        findBuiltInBySlug(categoryKey)?.id ?? idByKey.get(categoryKey);
-      return categoryId === undefined ? [] : [{ id, day, categoryId, amount }];
+  const getId = (key: string): number | undefined =>
+    findBuiltInBySlug(key)?.id ?? idByKey.get(key);
+  return {
+    customCategories,
+    hiddenCategoryIds: toIds(backup.hiddenCategoryKeys, getId),
+    transactions: toTransactions(backup.transactions, getId),
+  };
+}
+
+/**
+ * Reads a backup exactly as it is, keeping the ids of its custom
+ * categories. Cloud sync uses this, because both sides already agree on
+ * ids. Importing a file from elsewhere uses `resolveBackup` instead.
+ */
+export function toDataSnapshot(
+  backup: ParsedBackup,
+  fallbackCurrency: string,
+): DataSnapshot {
+  const idByKey = new Map<string, number>();
+  const customCategories = backup.categories.flatMap(
+    ({ key, label, kind, icon }) => {
+      const id = parseCustomSlug(key);
+      if (id === undefined || [...idByKey.values()].includes(id)) {
+        return [];
+      }
+      idByKey.set(key, id);
+      return [{ id, kind, label, icon }];
     },
   );
-  return { customCategories, transactions };
+  const getId = (key: string): number | undefined =>
+    findBuiltInBySlug(key)?.id ?? idByKey.get(key);
+  return {
+    customCategories,
+    hiddenCategoryIds: toIds(backup.hiddenCategoryKeys, getId),
+    transactions: toTransactions(backup.transactions, getId),
+    currency: backup.currency ?? fallbackCurrency,
+  };
 }
 
 export function getBackupFileName(day: DayKey): string {
   return `${BACKUP_APP_ID}-${toIsoDate(day)}.json`;
 }
 
-function parseBackupFile(text: string): BackupFile | undefined {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    return undefined;
+function isBackupDocument(value: unknown): value is BackupDocument {
+  if (typeof value !== 'object' || value === null) {
+    return false;
   }
-  if (typeof parsed !== 'object' || parsed === null) {
-    return undefined;
-  }
-  const { app, version, transactions } = parsed as Partial<BackupFile>;
-  const isBackup =
+  const { app, version, transactions } = value as Partial<BackupDocument>;
+  return (
     app === BACKUP_APP_ID &&
     READABLE_VERSIONS.includes(version) &&
-    Array.isArray(transactions);
-  return isBackup ? (parsed as BackupFile) : undefined;
+    Array.isArray(transactions)
+  );
 }
 
 /** Reads the custom categories of a backup. The first of a key wins. */
@@ -247,7 +308,7 @@ function toImportedCategory(item: unknown): ImportedCategory | undefined {
 
 function toImportedTransaction(
   item: unknown,
-  customKeys: ReadonlySet<string>,
+  isKnownKey: (key: unknown) => key is string,
 ): ImportedTransaction | undefined {
   if (typeof item !== 'object' || item === null) {
     return undefined;
@@ -256,17 +317,35 @@ function toImportedTransaction(
   if (
     !isValidTransactionId(id) ||
     typeof date !== 'string' ||
-    typeof category !== 'string' ||
-    typeof amount !== 'number'
+    typeof amount !== 'number' ||
+    !isKnownKey(category)
   ) {
     return undefined;
   }
   const day = parseIsoDate(date);
   const minorAmount = Math.round(amount * MINOR_UNITS);
-  const isKnownCategory =
-    findBuiltInBySlug(category) !== undefined || customKeys.has(category);
-  if (day === undefined || !isValidAmount(minorAmount) || !isKnownCategory) {
+  if (day === undefined || !isValidAmount(minorAmount)) {
     return undefined;
   }
   return { id, day, categoryKey: category, amount: minorAmount };
+}
+
+function toIds(
+  keys: ReadonlyArray<string>,
+  getId: (key: string) => number | undefined,
+): Array<number> {
+  return keys.flatMap((key) => {
+    const id = getId(key);
+    return id === undefined ? [] : [id];
+  });
+}
+
+function toTransactions(
+  transactions: ReadonlyArray<ImportedTransaction>,
+  getId: (key: string) => number | undefined,
+): Array<Transaction> {
+  return transactions.flatMap(({ id, day, categoryKey, amount }) => {
+    const categoryId = getId(categoryKey);
+    return categoryId === undefined ? [] : [{ id, day, categoryId, amount }];
+  });
 }

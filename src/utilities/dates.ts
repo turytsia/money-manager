@@ -33,6 +33,12 @@ const SHORT_DAY_FORMAT = new Intl.DateTimeFormat(LOCALE, {
   month: 'short',
   day: 'numeric',
 });
+const DATE_TIME_FORMAT = new Intl.DateTimeFormat(LOCALE, {
+  month: 'short',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+});
 const MONTH_FORMAT = new Intl.DateTimeFormat(LOCALE, { month: 'long' });
 const MONTH_WITH_YEAR_FORMAT = new Intl.DateTimeFormat(LOCALE, {
   month: 'long',
@@ -187,6 +193,11 @@ export function formatDay(day: DayKey, today: DayKey): string {
 
 export function formatShortDay(day: DayKey): string {
   return SHORT_DAY_FORMAT.format(fromDayKey(day));
+}
+
+/** A moment in time, for example "Nov 24, 2:32 PM". */
+export function formatDateTime(timestamp: number): string {
+  return DATE_TIME_FORMAT.format(timestamp);
 }
 
 export function formatMonth(day: DayKey): string {

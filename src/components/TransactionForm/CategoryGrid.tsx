@@ -1,8 +1,8 @@
 import * as React from 'react';
 import { css, cx } from '@emotion/css';
-import { Plus } from 'lucide-react';
+import { SlidersHorizontal } from 'lucide-react';
 import type { TransactionKind } from '../../utilities/types';
-import { CategoryEditorSheet } from '../CategoryEditor/CategoryEditorSheet';
+import { CategoryManagerSheet } from '../CategoryEditor/CategoryManagerSheet';
 import { useCategories } from '../StoreProvider/StoreProvider';
 
 const ICON_SIZE = 20;
@@ -24,7 +24,7 @@ const SCROLL_TOLERANCE = 1;
 
 const styles = {
   root: css`
-    --tile-height: clamp(52px, 7.2dvh, 62px);
+    --tile-height: clamp(48px, 6.6dvh, 56px);
     display: grid;
     flex-shrink: 0;
     grid-template-columns: repeat(${COLUMN_COUNT}, minmax(0, 1fr));
@@ -84,7 +84,7 @@ const styles = {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 4px;
+    gap: 3px;
     min-width: 0;
     padding: 0 4px;
     border: 1px solid transparent;
@@ -107,7 +107,7 @@ const styles = {
     background: var(--color-surface-raised);
     color: var(--color-fg);
   `,
-  newCategory: css`
+  edit: css`
     border: 1px dashed var(--color-border-strong);
     color: var(--color-fg-tertiary);
 
@@ -134,22 +134,29 @@ enum ScrollFade {
 export interface CategoryGridProps {
   kind: TransactionKind;
   selectedId: number;
+  /** A hidden category that is shown anyway, because it is in use here. */
+  keptId?: number;
   onSelect: (categoryId: number) => void;
 }
 
 /**
- * The categories of one type, followed by a tile to create a new one. A
- * category created here is selected right away.
+ * The categories of one type that the user has not turned off, followed
+ * by a tile that opens the list to change them. A category created from
+ * there is selected right away.
  */
 export const CategoryGrid: React.FC<CategoryGridProps> = ({
   kind,
   selectedId,
+  keptId,
   onSelect,
 }) => {
-  const categories = useCategories().byKind[kind];
+  const catalog = useCategories();
   const grid = React.useRef<HTMLDivElement>(null);
-  const [isCreating, setIsCreating] = React.useState(false);
+  const [isManaging, setIsManaging] = React.useState(false);
   const [fade, setFade] = React.useState(ScrollFade.None);
+  const categories = catalog.byKind[kind].filter(
+    ({ id }) => !catalog.hiddenIds.has(id) || id === keptId,
+  );
   const rowCount = Math.ceil((categories.length + 1) / COLUMN_COUNT);
 
   // On short screens the selection can be in a row scrolled out of view.
@@ -193,19 +200,23 @@ export const CategoryGrid: React.FC<CategoryGridProps> = ({
         ))}
         <button
           type='button'
-          aria-label='New category'
-          className={cx(styles.category, styles.newCategory)}
-          onClick={() => setIsCreating(true)}
+          aria-label='Edit categories'
+          className={cx(styles.category, styles.edit)}
+          onClick={() => setIsManaging(true)}
         >
-          <Plus size={ICON_SIZE} strokeWidth={1.75} aria-hidden='true' />
-          <span className={styles.label}>New</span>
+          <SlidersHorizontal
+            size={ICON_SIZE}
+            strokeWidth={1.75}
+            aria-hidden='true'
+          />
+          <span className={styles.label}>Edit</span>
         </button>
       </div>
-      {isCreating && (
-        <CategoryEditorSheet
+      {isManaging && (
+        <CategoryManagerSheet
           initialKind={kind}
-          onSaved={({ id }) => onSelect(id)}
-          onClose={() => setIsCreating(false)}
+          onCreated={({ id }) => onSelect(id)}
+          onClose={() => setIsManaging(false)}
         />
       )}
     </>

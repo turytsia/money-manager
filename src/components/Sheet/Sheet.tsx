@@ -1,6 +1,12 @@
 import * as React from 'react';
 import { createPortal } from 'react-dom';
 import { css, cx, keyframes } from '@emotion/css';
+import {
+  DRAG_OFFSET_PROPERTY,
+  DRAG_PROGRESS_PROPERTY,
+  DRAGGING_ATTRIBUTE,
+  useSheetDrag,
+} from './useSheetDrag';
 
 const FADE_IN = keyframes`
   from {
@@ -32,10 +38,17 @@ const styles = {
     inset: 0;
     z-index: 40;
     background: var(--color-overlay);
-    animation: ${FADE_IN} 220ms ease-out both;
+    /* Fades as the sheet is dragged down. */
+    opacity: calc(1 - var(${DRAG_PROGRESS_PROPERTY}, 0) * 0.7);
+    transition: opacity 260ms var(--ease-out);
+    animation: ${FADE_IN} 220ms ease-out;
+
+    &[${DRAGGING_ATTRIBUTE}] {
+      transition: none;
+    }
   `,
   backdropClosing: css`
-    animation: ${FADE_OUT} 200ms ease-in both;
+    animation: ${FADE_OUT} 200ms ease-in forwards;
   `,
   panel: css`
     position: fixed;
@@ -57,13 +70,21 @@ const styles = {
     border-bottom: 0;
     border-radius: 20px 20px 0 0;
     box-shadow: var(--shadow-raised);
-    animation: ${SLIDE_UP} 340ms var(--ease-out) both;
+    /* Follows the finger while dragged, and springs back when let go. */
+    transform: translateY(var(${DRAG_OFFSET_PROPERTY}, 0px));
+    transition: transform 260ms var(--ease-out);
+    animation: ${SLIDE_UP} 340ms var(--ease-out);
+
+    &[${DRAGGING_ATTRIBUTE}] {
+      transition: none;
+    }
   `,
   panelTall: css`
-    height: 720px;
+    height: 640px;
   `,
+  // Starts from wherever the sheet is, so a drag flows into the close.
   panelClosing: css`
-    animation: ${SLIDE_DOWN} 220ms ease-in both;
+    animation: ${SLIDE_DOWN} 220ms ease-in forwards;
   `,
   grabber: css`
     flex-shrink: 0;
@@ -90,7 +111,8 @@ export interface SheetProps {
 }
 
 /**
- * A panel that slides up from the bottom. The parent keeps it mounted until
+ * A panel that slides up from the bottom. It closes by dragging it down,
+ * tapping outside it, or pressing Escape. The parent keeps it mounted until
  * `onClose` fires, which lets the sheet animate out before it is removed.
  */
 export const Sheet: React.FC<SheetProps> = ({
@@ -101,7 +123,10 @@ export const Sheet: React.FC<SheetProps> = ({
 }) => {
   const [isClosing, setIsClosing] = React.useState(false);
   const panel = React.useRef<HTMLDivElement>(null);
+  const backdrop = React.useRef<HTMLDivElement>(null);
   const requestClose = React.useCallback(() => setIsClosing(true), []);
+
+  useSheetDrag(panel, backdrop, requestClose);
 
   React.useEffect(() => {
     // With sheets stacked, Escape closes only the top one.
@@ -123,6 +148,7 @@ export const Sheet: React.FC<SheetProps> = ({
   return createPortal(
     <SheetContext value={requestClose}>
       <div
+        ref={backdrop}
         className={cx(styles.backdrop, isClosing && styles.backdropClosing)}
         onClick={requestClose}
       />

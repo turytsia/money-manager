@@ -91,8 +91,8 @@ export const BackupSection: React.FC = () => {
         </Button>
       </div>
       <p className={styles.note}>
-        Your data lives only on this device. Export a backup file from time to
-        time and keep it somewhere safe, for example in iCloud Drive.
+        A backup is one file with all your data. Export one from time to time
+        and keep it somewhere safe, for example in iCloud Drive.
       </p>
       <input
         ref={fileInput}

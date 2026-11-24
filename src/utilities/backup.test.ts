@@ -5,6 +5,7 @@ import {
   getBackupFileName,
   parseBackup,
   resolveBackup,
+  toDataSnapshot,
   type ParsedBackup,
 } from './backup';
 import { createCatalog } from './categories';
@@ -14,6 +15,11 @@ import {
   type AppState,
   type CustomCategory,
 } from './types';
+
+const TRANSPORT = 3;
+
+/** Five seconds into 2025, which makes the next custom id 1005. */
+const NOW = Date.UTC(2025, 0, 1, 0, 0, 5);
 
 const COFFEE: CustomCategory = {
   id: 1000,
@@ -39,11 +45,12 @@ const STATE: AppState = {
     }),
   ],
   settings: { currency: 'EUR', theme: ThemePreference.Dark },
-  categories: createCatalog([COFFEE]),
+  categories: createCatalog([COFFEE], [TRANSPORT]),
+  sync: null,
 };
 
 describe('backup', () => {
-  it('should write categories and transactions in a form people can read', () => {
+  it('should write everything in a form people can read', () => {
     const backup = JSON.parse(createBackup(STATE, new Date(0)));
 
     expect(backup).toEqual({
@@ -54,6 +61,7 @@ describe('backup', () => {
       categories: [
         { key: 'custom-1000', name: 'Coffee', kind: 'expense', icon: 'coffee' },
       ],
+      hiddenCategories: ['transport'],
       transactions: [
         { id: 'a3', date: '2026-11-24', category: 'custom-1000', amount: 4.5 },
         { id: 'a2', date: '2026-11-23', category: 'groceries', amount: 19.99 },
@@ -66,9 +74,11 @@ describe('backup', () => {
     const backup = parseBackup(createBackup(STATE, new Date(0)));
 
     expect(backup).toBeDefined();
-    expect(resolveBackup(backup as ParsedBackup, createCatalog([]))).toEqual({
+    expect(toDataSnapshot(backup as ParsedBackup, 'USD')).toEqual({
       customCategories: [COFFEE],
+      hiddenCategoryIds: [TRANSPORT],
       transactions: STATE.transactions,
+      currency: 'EUR',
     });
   });
 
@@ -103,6 +113,7 @@ describe('backup', () => {
 
     expect(parseBackup(text)).toEqual({
       categories: [],
+      hiddenCategoryKeys: [],
       transactions: [
         { id: 'a1', day: 20261123, categoryKey: 'food', amount: 1250 },
       ],
@@ -113,9 +124,12 @@ describe('backup', () => {
 
   describe('when some entries of a backup are not valid', () => {
     it('should keep the valid ones and count the rest', () => {
-      const text = createBackupText(
-        [{ key: 'custom-1', name: 'Pets', kind: 'expense', icon: 'dog' }],
-        [
+      const text = createBackupText({
+        categories: [
+          { key: 'custom-1', name: 'Pets', kind: 'expense', icon: 'dog' },
+        ],
+        hiddenCategories: ['transport', 'unknown', 7],
+        transactions: [
           { id: 'a1', date: '2026-11-23', category: 'food', amount: 12.5 },
           { id: 'a2', date: '2026-11-23', category: 'custom-1', amount: 3 },
           { id: 'a3', date: '2026-02-30', category: 'food', amount: 12.5 },
@@ -125,9 +139,10 @@ describe('backup', () => {
           { id: 'A-7', date: '2026-11-23', category: 'food', amount: 1 },
           null,
         ],
-      );
+      });
 
       expect(parseBackup(text)).toMatchObject({
+        hiddenCategoryKeys: ['transport'],
         transactions: [
           { id: 'a1', categoryKey: 'food' },
           { id: 'a2', categoryKey: 'custom-1' },
@@ -142,16 +157,19 @@ describe('backup', () => {
       ['an unknown type', { key: 'c1', name: 'Pets', kind: 'gift' }],
       ['a key used by a built-in category', { key: 'food', name: 'Pets' }],
     ])('should leave out a category with %s', (_reason, category) => {
-      const text = createBackupText([{ kind: 'expense', ...category }], []);
+      const text = createBackupText({
+        categories: [{ kind: 'expense', ...category }],
+      });
 
       expect(parseBackup(text)?.categories).toEqual([]);
     });
 
     it('should give a category with an unknown icon the default one', () => {
-      const text = createBackupText(
-        [{ key: 'c1', name: 'Pets', kind: 'expense', icon: 'unicorn' }],
-        [],
-      );
+      const text = createBackupText({
+        categories: [
+          { key: 'c1', name: 'Pets', kind: 'expense', icon: 'unicorn' },
+        ],
+      });
 
       expect(parseBackup(text)?.categories).toEqual([
         { key: 'c1', label: 'Pets', kind: 'expense', icon: 'tag' },
@@ -160,20 +178,19 @@ describe('backup', () => {
   });
 
   it('should keep the last of two entries that share an id', () => {
-    const text = createBackupText(
-      [],
-      [
+    const text = createBackupText({
+      transactions: [
         { id: 'a1', date: '2026-11-23', category: 'food', amount: 1 },
         { id: 'a1', date: '2026-11-23', category: 'food', amount: 12.5 },
       ],
-    );
+    });
 
     expect(parseBackup(text)?.transactions).toEqual([
       { id: 'a1', day: 20261123, categoryKey: 'food', amount: 1250 },
     ]);
   });
 
-  describe('when a backup is matched to the categories of this device', () => {
+  describe('when a backup file is matched to the categories of this device', () => {
     it('should reuse a category with the same name and type', () => {
       const backup = createParsedBackup({
         key: 'custom-7',
@@ -181,8 +198,9 @@ describe('backup', () => {
         kind: TransactionKind.Expense,
       });
 
-      expect(resolveBackup(backup, createCatalog([COFFEE]))).toEqual({
+      expect(resolveBackup(backup, createCatalog([COFFEE]), NOW)).toEqual({
         customCategories: [COFFEE],
+        hiddenCategoryIds: [1000],
         transactions: [createTransaction({ categoryId: 1000 })],
       });
     });
@@ -194,9 +212,9 @@ describe('backup', () => {
         kind: TransactionKind.Expense,
       });
 
-      expect(resolveBackup(backup, createCatalog([])).transactions).toEqual([
-        createTransaction({ categoryId: 1 }),
-      ]);
+      expect(
+        resolveBackup(backup, createCatalog([]), NOW).transactions,
+      ).toEqual([createTransaction({ categoryId: 1 })]);
     });
 
     it('should create a category that does not exist yet with a new id', () => {
@@ -206,12 +224,45 @@ describe('backup', () => {
         kind: TransactionKind.Income,
       });
 
-      expect(resolveBackup(backup, createCatalog([COFFEE]))).toEqual({
+      expect(resolveBackup(backup, createCatalog([COFFEE]), NOW)).toEqual({
         customCategories: [
           COFFEE,
-          { id: 1001, kind: 'income', label: 'Coffee', icon: 'tag' },
+          { id: 1005, kind: 'income', label: 'Coffee', icon: 'tag' },
         ],
-        transactions: [createTransaction({ categoryId: 1001 })],
+        hiddenCategoryIds: [1005],
+        transactions: [createTransaction({ categoryId: 1005 })],
+      });
+    });
+  });
+
+  describe('when a backup is read exactly, for cloud sync', () => {
+    it('should keep the ids of its custom categories', () => {
+      const backup = createParsedBackup({
+        key: 'custom-2000',
+        label: 'Coffee',
+        kind: TransactionKind.Expense,
+      });
+
+      expect(toDataSnapshot(backup, 'USD')).toEqual({
+        customCategories: [
+          { id: 2000, kind: 'expense', label: 'Coffee', icon: 'tag' },
+        ],
+        hiddenCategoryIds: [2000],
+        transactions: [createTransaction({ categoryId: 2000 })],
+        currency: 'USD',
+      });
+    });
+
+    it('should leave out a category whose key holds no id', () => {
+      const backup = createParsedBackup({
+        key: 'pets',
+        label: 'Pets',
+        kind: TransactionKind.Expense,
+      });
+
+      expect(toDataSnapshot(backup, 'USD')).toMatchObject({
+        customCategories: [],
+        transactions: [],
       });
     });
   });
@@ -221,24 +272,26 @@ describe('backup', () => {
   });
 });
 
-function createBackupText(
-  categories: Array<unknown>,
-  transactions: Array<unknown>,
-): string {
+function createBackupText(parts: {
+  categories?: Array<unknown>;
+  hiddenCategories?: Array<unknown>;
+  transactions?: Array<unknown>;
+}): string {
   return JSON.stringify({
     app: 'money-manager',
     version: 2,
-    categories,
-    transactions,
+    transactions: [],
+    ...parts,
   });
 }
 
-/** A backup with one custom category and one transaction in it. */
+/** A backup with one custom category, hidden, and one transaction in it. */
 function createParsedBackup(
   category: Omit<ParsedBackup['categories'][number], 'icon'>,
 ): ParsedBackup {
   return {
     categories: [{ ...category, icon: 'tag' }],
+    hiddenCategoryKeys: [category.key],
     transactions: [
       { id: 'a1', day: 20261123, categoryKey: category.key, amount: 1250 },
     ],

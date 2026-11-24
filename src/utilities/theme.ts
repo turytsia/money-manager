@@ -98,7 +98,7 @@ export function applyGlobalStyles(): void {
       --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
       --safe-top: env(safe-area-inset-top, 0px);
       --safe-bottom: env(safe-area-inset-bottom, 0px);
-      --tab-bar-height: 56px;
+      --tab-bar-height: 50px;
       --content-width: 560px;
     }
 

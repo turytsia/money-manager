@@ -18,8 +18,8 @@ const styles = {
     display: grid;
     flex-shrink: 0;
     grid-template-columns: repeat(3, 1fr);
-    /* Keys shrink on short screens so the whole form fits without scrolling. */
-    grid-auto-rows: clamp(44px, 6.6dvh, 58px);
+    /* About the size of the iPhone's own number pad, smaller on short screens. */
+    grid-auto-rows: clamp(40px, 5.4dvh, 46px);
     gap: 6px;
   `,
   key: css`
@@ -27,9 +27,9 @@ const styles = {
     align-items: center;
     justify-content: center;
     border: 1px solid var(--color-border);
-    border-radius: var(--radius-m);
+    border-radius: 10px;
     background: var(--color-surface);
-    font-size: 24px;
+    font-size: 22px;
     font-weight: 500;
     font-variant-numeric: tabular-nums;
     transition:

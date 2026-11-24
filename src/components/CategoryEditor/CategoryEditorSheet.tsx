@@ -15,10 +15,6 @@ import { LABEL_STYLE } from '../../utilities/styles';
 import { formatCount } from '../../utilities/text';
 import { TransactionKind, type CustomCategory } from '../../utilities/types';
 import { Button, ButtonVariant } from '../Button/Button';
-import {
-  SegmentedControl,
-  type SegmentedOption,
-} from '../SegmentedControl/SegmentedControl';
 import { Sheet, useSheetClose } from '../Sheet/Sheet';
 import {
   useCategories,
@@ -27,11 +23,6 @@ import {
 } from '../StoreProvider/StoreProvider';
 import { ToastTone, useToast } from '../ToastProvider/ToastProvider';
 import { IconPicker } from './IconPicker';
-
-const KIND_OPTIONS: ReadonlyArray<SegmentedOption<TransactionKind>> = [
-  { value: TransactionKind.Expense, label: 'Expense' },
-  { value: TransactionKind.Income, label: 'Income' },
-];
 
 const SAVE_FAILED_MESSAGE = 'Could not save. Storage may be full.';
 const NAME_INPUT_ID = 'category-name';
@@ -159,18 +150,15 @@ const styles = {
 export interface CategoryEditorSheetProps {
   /** The category to edit. Leave out to create a new one. */
   category?: Category;
-  /** The type a new category starts with. */
-  initialKind?: TransactionKind;
-  /** Lets the type of a new category be changed. */
-  canChooseKind?: boolean;
+  /** Whether a new category is for expenses or income. */
+  kind?: TransactionKind;
   onSaved?: (category: CustomCategory) => void;
   onClose: () => void;
 }
 
 interface CategoryEditorProps {
   category: Category | undefined;
-  initialKind: TransactionKind;
-  canChooseKind: boolean;
+  kind: TransactionKind;
   onSaved: ((category: CustomCategory) => void) | undefined;
 }
 
@@ -182,8 +170,7 @@ interface DeleteConfirmationProps {
 /** Creates a custom category, or edits or deletes one. */
 export const CategoryEditorSheet: React.FC<CategoryEditorSheetProps> = ({
   category,
-  initialKind = TransactionKind.Expense,
-  canChooseKind = false,
+  kind = TransactionKind.Expense,
   onSaved,
   onClose,
 }) => {
@@ -194,8 +181,7 @@ export const CategoryEditorSheet: React.FC<CategoryEditorSheetProps> = ({
     >
       <CategoryEditor
         category={category}
-        initialKind={initialKind}
-        canChooseKind={canChooseKind}
+        kind={category?.kind ?? kind}
         onSaved={onSaved}
       />
     </Sheet>
@@ -204,8 +190,7 @@ export const CategoryEditorSheet: React.FC<CategoryEditorSheetProps> = ({
 
 const CategoryEditor: React.FC<CategoryEditorProps> = ({
   category,
-  initialKind,
-  canChooseKind,
+  kind,
   onSaved,
 }) => {
   const store = useStore();
@@ -216,7 +201,6 @@ const CategoryEditor: React.FC<CategoryEditorProps> = ({
   const [icon, setIcon] = React.useState<CategoryIconName>(
     category?.iconName ?? DEFAULT_CATEGORY_ICON,
   );
-  const [kind, setKind] = React.useState(category?.kind ?? initialKind);
   const [error, setError] = React.useState<string | undefined>(undefined);
   const [isConfirmingDelete, setIsConfirmingDelete] = React.useState(false);
 
@@ -252,11 +236,6 @@ const CategoryEditor: React.FC<CategoryEditorProps> = ({
     event: React.ChangeEvent<HTMLInputElement>,
   ): void => {
     setLabel(event.target.value);
-    setError(undefined);
-  };
-
-  const handleKindChange = (nextKind: TransactionKind): void => {
-    setKind(nextKind);
     setError(undefined);
   };
 
@@ -321,17 +300,6 @@ const CategoryEditor: React.FC<CategoryEditorProps> = ({
         <p id={ERROR_ID} role='alert' className={styles.error}>
           {error}
         </p>
-      )}
-      {canChooseKind && !category && (
-        <div className={styles.field}>
-          <span className={LABEL_STYLE}>Type</span>
-          <SegmentedControl
-            label='Type'
-            options={KIND_OPTIONS}
-            value={kind}
-            onChange={handleKindChange}
-          />
-        </div>
       )}
       <div className={styles.field}>
         <span className={LABEL_STYLE}>Icon</span>

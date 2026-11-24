@@ -2,12 +2,18 @@ import * as React from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { StoreProvider } from './components/StoreProvider/StoreProvider';
+import { SyncEngineProvider } from './components/SyncEngineProvider/SyncEngineProvider';
 import { ToastProvider } from './components/ToastProvider/ToastProvider';
 import { registerServiceWorker } from './utilities/serviceWorker';
 import { createStore } from './utilities/store';
+import { createHttpSyncProvider } from './utilities/sync/httpSyncProvider';
+import { createSyncEngine } from './utilities/sync/syncEngine';
 import { applyGlobalStyles } from './utilities/theme';
 
 const ROOT_ELEMENT_ID = 'root';
+
+/** Relative, so it works wherever the app is hosted. */
+const SYNC_ENDPOINT = `${import.meta.env.BASE_URL}api/sync`;
 const KEYBOARD_INSET_PROPERTY = '--keyboard-inset';
 const VISIBLE_HEIGHT_PROPERTY = '--visible-height';
 
@@ -22,12 +28,22 @@ function startApp(): void {
   protectSavedData();
   registerServiceWorker();
 
+  const store = createStore();
+  // This is the one place that picks where cloud sync talks to. Another
+  // service only needs another provider here.
+  const syncEngine = createSyncEngine(store, (token) =>
+    createHttpSyncProvider(SYNC_ENDPOINT, token),
+  );
+  syncEngine.start();
+
   createRoot(rootElement).render(
     <React.StrictMode>
-      <StoreProvider store={createStore()}>
-        <ToastProvider>
-          <App />
-        </ToastProvider>
+      <StoreProvider store={store}>
+        <SyncEngineProvider engine={syncEngine}>
+          <ToastProvider>
+            <App />
+          </ToastProvider>
+        </SyncEngineProvider>
       </StoreProvider>
     </React.StrictMode>,
   );

@@ -21,10 +21,10 @@ const styles = {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    height: 34px;
+    height: 32px;
     padding: 0 14px;
     border: 1px solid var(--color-border);
-    border-radius: 17px;
+    border-radius: 16px;
     color: var(--color-fg-secondary);
     font-size: 13px;
     font-weight: 500;

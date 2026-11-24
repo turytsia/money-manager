@@ -2,7 +2,8 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
-import { Providers } from './test/Providers';
+import { createMemoryCloud } from './test/mocks/memoryCloud';
+import { createProviders, Providers } from './test/Providers';
 
 describe('App', () => {
   beforeEach(() => {
@@ -165,12 +166,18 @@ describe('App', () => {
       const user = userEvent.setup();
       render(<App />, { wrapper: Providers });
 
-      await user.click(screen.getByRole('button', { name: 'New category' }));
-      const dialog = screen.getByRole('dialog', { name: 'New category' });
-      await user.type(within(dialog).getByLabelText('Name'), 'Pets');
-      await user.click(within(dialog).getByRole('radio', { name: 'Dog' }));
-      await user.click(within(dialog).getByRole('button', { name: 'Save' }));
-      fireEvent.animationEnd(dialog);
+      await user.click(screen.getByRole('button', { name: 'Edit categories' }));
+      const manager = screen.getByRole('dialog', { name: 'Categories' });
+      await user.click(
+        within(manager).getByRole('button', { name: 'New category' }),
+      );
+      const editor = screen.getByRole('dialog', { name: 'New category' });
+      await user.type(within(editor).getByLabelText('Name'), 'Pets');
+      await user.click(within(editor).getByRole('radio', { name: 'Dog' }));
+      await user.click(within(editor).getByRole('button', { name: 'Save' }));
+      fireEvent.animationEnd(editor);
+      await user.click(within(manager).getByRole('button', { name: 'Done' }));
+      fireEvent.animationEnd(manager);
 
       expect(screen.getByRole('radio', { name: 'Pets' })).toBeChecked();
 
@@ -178,31 +185,88 @@ describe('App', () => {
       await user.click(screen.getByRole('button', { name: 'Add expense' }));
 
       expect(screen.getByText('Added $7 to Pets')).toBeVisible();
-      expect(localStorage.getItem('mm:categories')).toBe(
-        '[{"id":1000,"kind":"expense","label":"Pets","icon":"dog"}]',
+      const [category] = JSON.parse(
+        localStorage.getItem('mm:categories') ?? '',
       );
+      expect(category).toMatchObject({
+        kind: 'expense',
+        label: 'Pets',
+        icon: 'dog',
+      });
       expect(
         JSON.parse(localStorage.getItem('mm:tx:202611') ?? '')[0].slice(1),
-      ).toEqual([23, 1000, 700]);
+      ).toEqual([23, category.id, 700]);
     });
 
     it('should not allow a name that is already taken', async () => {
       const user = userEvent.setup();
       render(<App />, { wrapper: Providers });
 
+      await user.click(screen.getByRole('button', { name: 'Edit categories' }));
       await user.click(screen.getByRole('button', { name: 'New category' }));
-      const dialog = screen.getByRole('dialog', { name: 'New category' });
-      await user.type(within(dialog).getByLabelText('Name'), 'food');
-      await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+      const editor = screen.getByRole('dialog', { name: 'New category' });
+      await user.type(within(editor).getByLabelText('Name'), 'food');
+      await user.click(within(editor).getByRole('button', { name: 'Save' }));
 
-      expect(within(dialog).getByRole('alert')).toHaveTextContent(
+      expect(within(editor).getByRole('alert')).toHaveTextContent(
         'A category with this name already exists',
       );
       expect(localStorage.getItem('mm:categories')).toBeNull();
     });
   });
 
-  describe('when a custom category is deleted in Settings', () => {
+  describe('when a category is turned off', () => {
+    it('should no longer be offered when adding', async () => {
+      const user = userEvent.setup();
+      render(<App />, { wrapper: Providers });
+
+      await user.click(screen.getByRole('button', { name: 'Edit categories' }));
+      const manager = screen.getByRole('dialog', { name: 'Categories' });
+      await user.click(
+        within(manager).getByRole('switch', { name: 'Show Transport' }),
+      );
+      await user.click(within(manager).getByRole('button', { name: 'Done' }));
+      fireEvent.animationEnd(manager);
+
+      expect(
+        screen.queryByRole('radio', { name: 'Transport' }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: 'Food' })).toBeVisible();
+      expect(localStorage.getItem('mm:hidden')).toBe('[3]');
+    });
+
+    it('should not offer a switch for Other, which always stays', async () => {
+      const user = userEvent.setup();
+      render(<App />, { wrapper: Providers });
+
+      await user.click(screen.getByRole('button', { name: 'Edit categories' }));
+      const manager = screen.getByRole('dialog', { name: 'Categories' });
+
+      expect(
+        within(manager).queryByRole('switch', { name: 'Show Other' }),
+      ).not.toBeInTheDocument();
+      expect(within(manager).getByText('Always shown')).toBeVisible();
+    });
+
+    it('should still show on a transaction that already has it', async () => {
+      const user = userEvent.setup();
+      localStorage.setItem('mm:hidden', '[3]');
+      localStorage.setItem('mm:tx:202611', '[["a1",23,3,1250]]');
+      render(<App />, { wrapper: Providers });
+
+      await user.click(screen.getByRole('button', { name: 'Activity' }));
+      await user.click(
+        screen.getByRole('button', { name: 'Transport, $12.50' }),
+      );
+      const dialog = screen.getByRole('dialog', { name: 'Edit transaction' });
+
+      expect(
+        within(dialog).getByRole('radio', { name: 'Transport' }),
+      ).toBeChecked();
+    });
+  });
+
+  describe('when a custom category is deleted', () => {
     it('should move its transactions to Other', async () => {
       const user = userEvent.setup();
       localStorage.setItem(
@@ -213,23 +277,99 @@ describe('App', () => {
       render(<App />, { wrapper: Providers });
 
       await user.click(screen.getByRole('button', { name: 'Settings' }));
-      await user.click(screen.getByRole('button', { name: /^Pets/ }));
-      const dialog = screen.getByRole('dialog', { name: 'Edit category' });
       await user.click(
-        within(dialog).getByRole('button', { name: 'Delete category' }),
+        screen.getByRole('button', { name: 'Manage categories' }),
+      );
+      const manager = screen.getByRole('dialog', { name: 'Categories' });
+      await user.click(
+        within(manager).getByRole('button', { name: 'Edit Pets' }),
+      );
+      const editor = screen.getByRole('dialog', { name: 'Edit category' });
+      await user.click(
+        within(editor).getByRole('button', { name: 'Delete category' }),
       );
 
       expect(
-        within(dialog).getByText(/Its 1 transaction will move to Other/),
+        within(editor).getByText(/Its 1 transaction will move to Other/),
       ).toBeVisible();
 
       await user.click(
-        within(dialog).getByRole('button', { name: 'Delete category' }),
+        within(editor).getByRole('button', { name: 'Delete category' }),
       );
 
       expect(screen.getByText('Deleted Pets')).toBeVisible();
       expect(localStorage.getItem('mm:categories')).toBeNull();
       expect(localStorage.getItem('mm:tx:202611')).toBe('[["a1",23,9,700]]');
+    });
+  });
+
+  describe('when cloud sync is turned on in Settings', () => {
+    it('should send the data on this device to the cloud', async () => {
+      const user = userEvent.setup();
+      const cloud = createMemoryCloud();
+      localStorage.setItem('mm:tx:202611', '[["a1",23,2,1250]]');
+      render(<App />, { wrapper: createProviders(cloud) });
+
+      await user.click(screen.getByRole('button', { name: 'Settings' }));
+      await user.type(screen.getByLabelText('Sync password'), 'secret');
+      await user.click(screen.getByRole('button', { name: 'Turn on' }));
+
+      expect(await screen.findByText('Cloud sync is on')).toBeVisible();
+      expect(screen.getByText('Up to date')).toBeVisible();
+      expect(cloud.getDocument()).toMatchObject({
+        transactions: [
+          { id: 'a1', date: '2026-11-23', category: 'groceries', amount: 12.5 },
+        ],
+      });
+    });
+
+    it('should bring back the data kept in the cloud', async () => {
+      const user = userEvent.setup();
+      const cloud = createMemoryCloud();
+      cloud.saveFromOtherDevice({
+        app: 'money-manager',
+        version: 2,
+        currency: 'USD',
+        transactions: [
+          { id: 'r1', date: '2026-11-23', category: 'food', amount: 8 },
+        ],
+      });
+      render(<App />, { wrapper: createProviders(cloud) });
+
+      await user.click(screen.getByRole('button', { name: 'Settings' }));
+      await user.type(screen.getByLabelText('Sync password'), 'secret');
+      await user.click(screen.getByRole('button', { name: 'Turn on' }));
+      await screen.findByText('Cloud sync is on');
+      await user.click(screen.getByRole('button', { name: 'Activity' }));
+
+      expect(screen.getByRole('button', { name: 'Food, $8' })).toBeVisible();
+    });
+
+    it('should say so when the password is wrong', async () => {
+      const user = userEvent.setup();
+      render(<App />, { wrapper: createProviders(createMemoryCloud()) });
+
+      await user.click(screen.getByRole('button', { name: 'Settings' }));
+      await user.type(screen.getByLabelText('Sync password'), 'wrong');
+      await user.click(screen.getByRole('button', { name: 'Turn on' }));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'That password is not right.',
+      );
+      expect(localStorage.getItem('mm:sync')).toBeNull();
+    });
+
+    it('should stop syncing when it is turned off again', async () => {
+      const user = userEvent.setup();
+      render(<App />, { wrapper: createProviders(createMemoryCloud()) });
+
+      await user.click(screen.getByRole('button', { name: 'Settings' }));
+      await user.type(screen.getByLabelText('Sync password'), 'secret');
+      await user.click(screen.getByRole('button', { name: 'Turn on' }));
+      await user.click(await screen.findByRole('button', { name: 'Turn off' }));
+
+      expect(screen.getByLabelText('Sync password')).toBeVisible();
+      expect(localStorage.getItem('mm:sync')).toBeNull();
     });
   });
 });
