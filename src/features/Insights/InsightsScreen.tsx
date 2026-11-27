@@ -33,6 +33,8 @@ const GRANULARITY_OPTIONS: ReadonlyArray<SegmentedOption<Granularity>> = [
 ];
 
 const CHART_TITLE = 'Earned and spent over time';
+const SPENT_TITLE = 'Spent by category';
+const EARNED_TITLE = 'Earned by category';
 
 const styles = {
   summary: cx(
@@ -50,32 +52,17 @@ const styles = {
     font-size: 12px;
     text-align: center;
   `,
-  sectionHeader: css`
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    min-height: 28px;
-    margin: 24px 4px 8px;
-  `,
-  clearFilter: css`
-    height: 28px;
-    padding: 0 10px;
-    border: 1px solid var(--color-border);
-    border-radius: 14px;
-    color: var(--color-fg-secondary);
-    font-size: 12px;
-    font-weight: 500;
-
-    &:active {
-      background: var(--color-surface-raised);
-    }
-  `,
+  sectionTitle: cx(
+    LABEL_STYLE,
+    css`
+      margin: 24px 4px 8px;
+    `,
+  ),
 };
 
 /**
  * What was earned and spent, grouped by day, week, month or year, with the
- * selected period split by category. Tapping a category narrows the chart
- * to it.
+ * selected period split by category.
  */
 export const InsightsScreen: React.FC = () => {
   const transactions = useTransactions();
@@ -84,12 +71,6 @@ export const InsightsScreen: React.FC = () => {
   const today = useToday();
   const [granularity, setGranularity] = React.useState(Granularity.Month);
   const [selectedStart, setSelectedStart] = React.useState<DayKey | null>(null);
-  const [chosenCategoryId, setCategoryId] = React.useState<number | null>(null);
-  // The filter turns itself off when its category gets deleted.
-  const categoryId =
-    chosenCategoryId !== null && categories.byId.has(chosenCategoryId)
-      ? chosenCategoryId
-      : null;
 
   // Cheap to run on every render: the heavy sums are cached per data set.
   const insights = buildInsights({
@@ -97,7 +78,6 @@ export const InsightsScreen: React.FC = () => {
     categories,
     granularity,
     selectedStart,
-    categoryId,
     today,
   });
   const earned = insights.breakdown[TransactionKind.Income];
@@ -111,10 +91,6 @@ export const InsightsScreen: React.FC = () => {
     setSelectedStart(
       shiftBucket(insights.selectedStart, granularity, direction),
     );
-  };
-
-  const handleCategoryToggle = (toggledId: number): void => {
-    setCategoryId((current) => (current === toggledId ? null : toggledId));
   };
 
   if (transactions.length === 0) {
@@ -160,34 +136,19 @@ export const InsightsScreen: React.FC = () => {
         />
         <p className={styles.range}>{insights.rangeLabel}</p>
       </div>
-      <div className={styles.sectionHeader}>
-        <h2 className={LABEL_STYLE}>Spent by category</h2>
-        {categoryId !== null && (
-          <button
-            type='button'
-            className={styles.clearFilter}
-            onClick={() => setCategoryId(null)}
-          >
-            Clear filter
-          </button>
-        )}
-      </div>
+      <h2 className={styles.sectionTitle}>{SPENT_TITLE}</h2>
       <CategoryBreakdown
+        label={SPENT_TITLE}
         items={insights.breakdown[TransactionKind.Expense]}
         currency={currency}
-        selectedCategoryId={categoryId}
-        onToggle={handleCategoryToggle}
       />
       {earned.length > 0 && (
         <>
-          <div className={styles.sectionHeader}>
-            <h2 className={LABEL_STYLE}>Earned by category</h2>
-          </div>
+          <h2 className={styles.sectionTitle}>{EARNED_TITLE}</h2>
           <CategoryBreakdown
+            label={EARNED_TITLE}
             items={earned}
             currency={currency}
-            selectedCategoryId={categoryId}
-            onToggle={handleCategoryToggle}
           />
         </>
       )}

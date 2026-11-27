@@ -68,9 +68,12 @@ describe('App', () => {
       expect(
         within(insights).getByRole('heading', { name: 'November 2026' }),
       ).toBeVisible();
-      expect(
-        within(insights).getByRole('button', { name: /Groceries/ }),
-      ).toHaveTextContent('$12.50100%');
+      const spent = within(insights).getByRole('list', {
+        name: 'Spent by category',
+      });
+      expect(within(spent).getByRole('listitem')).toHaveTextContent(
+        'Groceries$12.50100%',
+      );
     });
 
     it('should not confirm it again after a visit to another tab', async () => {
@@ -148,6 +151,133 @@ describe('App', () => {
       await user.click(screen.getByRole('button', { name: 'Undo' }));
 
       expect(localStorage.getItem('mm:tx:202611')).toBe('[["a1",23,2,1250]]');
+    });
+  });
+
+  describe('when a category is picked in Activity', () => {
+    it('should list only its transactions until All is tapped', async () => {
+      const user = userEvent.setup();
+      localStorage.setItem(
+        'mm:tx:202611',
+        '[["a1",23,2,1250],["a2",22,1,800],["a3",20,1,300]]',
+      );
+      render(<App />, { wrapper: Providers });
+
+      await user.click(screen.getByRole('button', { name: 'Activity' }));
+      const filter = screen.getByRole('group', { name: 'Filter by category' });
+      await user.click(within(filter).getByRole('button', { name: 'Food' }));
+
+      expect(
+        within(filter).getByRole('button', { name: 'Food' }),
+      ).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByText('2 transactions')).toBeVisible();
+      expect(screen.getByRole('button', { name: 'Food, $8' })).toBeVisible();
+      expect(
+        screen.queryByRole('button', { name: 'Groceries, $12.50' }),
+      ).not.toBeInTheDocument();
+
+      await user.click(within(filter).getByRole('button', { name: 'All' }));
+
+      expect(screen.getByText('3 transactions')).toBeVisible();
+      expect(
+        screen.getByRole('button', { name: 'Groceries, $12.50' }),
+      ).toBeVisible();
+    });
+
+    it('should list the transactions of every picked category', async () => {
+      const user = userEvent.setup();
+      localStorage.setItem(
+        'mm:tx:202611',
+        '[["a1",23,2,1250],["a2",22,1,800],["a3",20,3,300]]',
+      );
+      render(<App />, { wrapper: Providers });
+
+      await user.click(screen.getByRole('button', { name: 'Activity' }));
+      const filter = screen.getByRole('group', { name: 'Filter by category' });
+      await user.click(within(filter).getByRole('button', { name: 'Food' }));
+      await user.click(
+        within(filter).getByRole('button', { name: 'Transport' }),
+      );
+
+      expect(screen.getByRole('button', { name: 'Food, $8' })).toBeVisible();
+      expect(
+        screen.getByRole('button', { name: 'Transport, $3' }),
+      ).toBeVisible();
+      expect(
+        screen.queryByRole('button', { name: 'Groceries, $12.50' }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  describe('when all data is erased in Settings', () => {
+    it('should only ask for approval while sync is off', async () => {
+      const user = userEvent.setup();
+      localStorage.setItem('mm:tx:202611', '[["a1",23,2,1250]]');
+      render(<App />, { wrapper: Providers });
+
+      await user.click(screen.getByRole('button', { name: 'Settings' }));
+      await user.click(screen.getByRole('button', { name: 'Erase all data' }));
+      const dialog = screen.getByRole('dialog', { name: 'Erase all data' });
+
+      expect(
+        within(dialog).queryByLabelText('Sync password'),
+      ).not.toBeInTheDocument();
+
+      await user.click(
+        within(dialog).getByRole('button', { name: 'Erase everything' }),
+      );
+
+      expect(screen.getByText('All data erased')).toBeVisible();
+      expect(localStorage.getItem('mm:tx:202611')).toBeNull();
+    });
+
+    describe('while cloud sync is on', () => {
+      it('should keep the data when the sync password is wrong', async () => {
+        const user = userEvent.setup();
+        localStorage.setItem('mm:tx:202611', '[["a1",23,2,1250]]');
+        render(<App />, { wrapper: createProviders(createMemoryCloud()) });
+
+        await turnSyncOn(user);
+        await user.click(
+          screen.getByRole('button', { name: 'Erase all data' }),
+        );
+        const dialog = screen.getByRole('dialog', { name: 'Erase all data' });
+        const eraseButton = within(dialog).getByRole('button', {
+          name: 'Erase everything',
+        });
+
+        expect(eraseButton).toBeDisabled();
+
+        await user.type(within(dialog).getByLabelText('Sync password'), 'nope');
+        await user.click(eraseButton);
+
+        expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+          'That password is not right.',
+        );
+        expect(localStorage.getItem('mm:tx:202611')).toBe('[["a1",23,2,1250]]');
+      });
+
+      it('should erase everything with the sync password', async () => {
+        const user = userEvent.setup();
+        localStorage.setItem('mm:tx:202611', '[["a1",23,2,1250]]');
+        render(<App />, { wrapper: createProviders(createMemoryCloud()) });
+
+        await turnSyncOn(user);
+        await user.click(
+          screen.getByRole('button', { name: 'Erase all data' }),
+        );
+        const dialog = screen.getByRole('dialog', { name: 'Erase all data' });
+        await user.type(
+          within(dialog).getByLabelText('Sync password'),
+          'secret',
+        );
+        await user.click(
+          within(dialog).getByRole('button', { name: 'Erase everything' }),
+        );
+
+        expect(await screen.findByText('All data erased')).toBeVisible();
+        expect(localStorage.getItem('mm:tx:202611')).toBeNull();
+      });
     });
   });
 
@@ -417,6 +547,14 @@ describe('App', () => {
     });
   });
 });
+
+/** Opens Settings and turns cloud sync on with the password "secret". */
+async function turnSyncOn(user: UserEvent): Promise<void> {
+  await user.click(screen.getByRole('button', { name: 'Settings' }));
+  await user.type(screen.getByLabelText('Sync password'), 'secret');
+  await user.click(screen.getByRole('button', { name: 'Turn on' }));
+  await screen.findByText('Cloud sync is on');
+}
 
 async function addExpense(user: UserEvent): Promise<void> {
   await user.click(screen.getByRole('button', { name: '1' }));

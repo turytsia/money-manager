@@ -46,8 +46,6 @@ export interface InsightsQuery {
   granularity: Granularity;
   /** First day of the chosen period, or null for the one containing today. */
   selectedStart: DayKey | null;
-  /** Narrows the chart and totals to one category. */
-  categoryId: number | null;
   today: DayKey;
 }
 
@@ -66,8 +64,6 @@ export interface ChartBar {
 /** The figures of one series for the selected period. */
 export interface SeriesSummary {
   kind: TransactionKind;
-  /** The category the series is narrowed to, while a filter is on. */
-  categoryLabel: string | undefined;
   total: number;
   /** Total of the period right before the selected one. */
   previousTotal: number;
@@ -85,7 +81,7 @@ export interface Insights {
   label: string;
   /** The span of time covered by all periods of the chart. */
   rangeLabel: string;
-  /** Both series, or only the one a category filter belongs to. */
+  /** One entry per series, in the order of `SERIES_KINDS`. */
   series: Array<SeriesSummary>;
   bars: Array<ChartBar>;
   /** A round number at or above the tallest bar, for the chart's scale. */
@@ -108,20 +104,14 @@ export function buildInsights({
   categories,
   granularity,
   selectedStart,
-  categoryId,
   today,
 }: InsightsQuery): Insights {
   const index = getBucketIndex(transactions, granularity);
-  const filter =
-    categoryId === null ? undefined : categories.byId.get(categoryId);
-  const kinds = filter ? [filter.kind] : SERIES_KINDS;
-  const getIds = (kind: TransactionKind): Array<number> =>
-    filter
-      ? [filter].filter((category) => category.kind === kind).map(getId)
-      : categories.byKind[kind].map(getId);
   const idsByKind: Readonly<Record<TransactionKind, Array<number>>> = {
-    [TransactionKind.Expense]: getIds(TransactionKind.Expense),
-    [TransactionKind.Income]: getIds(TransactionKind.Income),
+    [TransactionKind.Expense]:
+      categories.byKind[TransactionKind.Expense].map(getId),
+    [TransactionKind.Income]:
+      categories.byKind[TransactionKind.Income].map(getId),
   };
   const getAmounts = (start: DayKey): KindAmounts => {
     const totals = index.get(start);
@@ -187,16 +177,17 @@ export function buildInsights({
       bars[windowSize - 1].start,
       granularity,
     ),
-    series: kinds.map((kind) => ({
+    series: SERIES_KINDS.map((kind) => ({
       kind,
-      categoryLabel: filter?.label,
       total: selectedAmounts[kind],
       previousTotal: previousAmounts[kind],
     })),
     bars,
     scaleMax: getNiceCeiling(
       Math.max(
-        ...bars.flatMap(({ amounts }) => kinds.map((kind) => amounts[kind])),
+        ...bars.flatMap(({ amounts }) =>
+          SERIES_KINDS.map((kind) => amounts[kind]),
+        ),
       ),
     ),
     breakdown: {

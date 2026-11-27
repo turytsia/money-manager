@@ -75,6 +75,11 @@ const styles = {
     &:active:not(:disabled) {
       background: color-mix(in srgb, var(--color-danger) 14%, transparent);
     }
+
+    &:disabled {
+      border-color: var(--color-border);
+      color: var(--color-fg-tertiary);
+    }
   `,
 };
 

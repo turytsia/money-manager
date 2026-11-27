@@ -175,7 +175,7 @@ const SeriesRow: React.FC<SeriesRowProps> = ({
   granularity,
   currency,
 }) => {
-  const { kind, categoryLabel, total, previousTotal } = summary;
+  const { kind, total, previousTotal } = summary;
   const isHigher = total > previousTotal;
   // Spending more is the bad direction; earning more is the good one.
   const isBetter = isHigher === (kind === TransactionKind.Income);
@@ -184,9 +184,7 @@ const SeriesRow: React.FC<SeriesRowProps> = ({
   return (
     <div className={styles.row}>
       <span className={cx(styles.swatch, styles[kind])} aria-hidden='true' />
-      <span className={styles.name}>
-        {categoryLabel ?? SERIES_LABELS[kind]}
-      </span>
+      <span className={styles.name}>{SERIES_LABELS[kind]}</span>
       <span className={cx(styles.total, TABULAR_STYLE)}>
         {formatMoney(total, currency)}
       </span>

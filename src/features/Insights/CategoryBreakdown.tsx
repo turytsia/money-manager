@@ -14,28 +14,21 @@ const styles = {
   root: cx(
     CARD_STYLE,
     css`
+      margin: 0;
+      padding: 0;
       overflow: hidden;
+      list-style: none;
     `,
   ),
   row: css`
     display: flex;
     align-items: center;
     gap: 12px;
-    width: 100%;
     padding: 12px 14px;
-    text-align: left;
-    transition: background-color 120ms ease;
 
     & + & {
       border-top: 1px solid var(--color-border);
     }
-
-    &:active {
-      background: var(--color-surface-raised);
-    }
-  `,
-  rowSelected: css`
-    background: var(--color-surface-raised);
   `,
   details: css`
     display: flex;
@@ -74,12 +67,11 @@ const styles = {
 };
 
 export interface CategoryBreakdownProps {
+  /** Names the list for screen readers. It is not shown. */
+  label: string;
   /** Categories of the selected period, largest first. */
   items: ReadonlyArray<BreakdownItem>;
   currency: string;
-  selectedCategoryId: number | null;
-  /** Turns the filter for a category on, or off if it is already on. */
-  onToggle: (categoryId: number) => void;
 }
 
 interface BreakdownRowProps {
@@ -87,21 +79,17 @@ interface BreakdownRowProps {
   /** Length of the bar relative to the largest category, from 0 to 1. */
   ratio: number;
   currency: string;
-  isSelected: boolean;
-  onToggle: (categoryId: number) => void;
 }
 
 /**
  * Where the money of the selected period went, or came from, as ranked
  * bars. Bars are drawn against the largest category so they are easy to
- * compare, and each row also shows its share of the total. Tapping a row
- * filters the chart.
+ * compare, and each row also shows its share of the total.
  */
 export const CategoryBreakdown: React.FC<CategoryBreakdownProps> = ({
+  label,
   items,
   currency,
-  selectedCategoryId,
-  onToggle,
 }) => {
   if (items.length === 0) {
     return (
@@ -113,18 +101,16 @@ export const CategoryBreakdown: React.FC<CategoryBreakdownProps> = ({
   const largestAmount = items[0].amount;
 
   return (
-    <div className={styles.root}>
+    <ul aria-label={label} className={styles.root}>
       {items.map((item) => (
         <BreakdownRow
           key={item.category.id}
           item={item}
           ratio={item.amount / largestAmount}
           currency={currency}
-          isSelected={item.category.id === selectedCategoryId}
-          onToggle={onToggle}
         />
       ))}
-    </div>
+    </ul>
   );
 };
 
@@ -132,19 +118,12 @@ const BreakdownRow: React.FC<BreakdownRowProps> = ({
   item,
   ratio,
   currency,
-  isSelected,
-  onToggle,
 }) => {
   const { category, amount, share } = item;
   const sharePercent = Math.round(share * PERCENT);
 
   return (
-    <button
-      type='button'
-      aria-pressed={isSelected}
-      className={cx(styles.row, isSelected && styles.rowSelected)}
-      onClick={() => onToggle(category.id)}
-    >
+    <li className={styles.row}>
       <CategoryIcon category={category} />
       <span className={styles.details}>
         <span className={styles.line}>
@@ -161,6 +140,6 @@ const BreakdownRow: React.FC<BreakdownRowProps> = ({
           className={styles[category.kind]}
         />
       </span>
-    </button>
+    </li>
   );
 };

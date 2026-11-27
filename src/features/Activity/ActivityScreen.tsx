@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { css } from '@emotion/css';
-import { ReceiptText } from 'lucide-react';
+import { ListFilter, ReceiptText } from 'lucide-react';
 import { Button } from '../../components/Button/Button';
 import { EmptyState } from '../../components/EmptyState/EmptyState';
 import { ScreenHeader } from '../../components/ScreenHeader/ScreenHeader';
@@ -13,12 +13,15 @@ import { SCREEN_STYLE } from '../../utilities/styles';
 import { formatCount } from '../../utilities/text';
 import type { Transaction } from '../../utilities/types';
 import { useToday } from '../../utilities/useToday';
+import { buildActivity } from './activity';
+import { CategoryFilter } from './CategoryFilter';
 import { DaySection } from './DaySection';
 import { EditTransactionSheet } from './EditTransactionSheet';
-import { groupByDay } from './groupByDay';
 
 /** Days shown at first, and added each time the end of the list is reached. */
 const PAGE_SIZE = 30;
+
+const NO_CATEGORIES: ReadonlySet<number> = new Set();
 
 /** Starts loading the next page a little before the end scrolls into view. */
 const LOAD_MORE_MARGIN = '400px';
@@ -39,36 +42,67 @@ interface LoadMoreProps {
   onLoadMore: () => void;
 }
 
-/** Every transaction, newest first, grouped by day. Tap one to edit it. */
+/**
+ * Every transaction, newest first, grouped by day. Tap one to edit it. The
+ * chips at the top narrow the list to some categories.
+ */
 export const ActivityScreen: React.FC = () => {
   const transactions = useTransactions();
   const categories = useCategories();
   const { currency } = useSettings();
   const today = useToday();
   const [visibleDayCount, setVisibleDayCount] = React.useState(PAGE_SIZE);
+  const [categoryIds, setCategoryIds] = React.useState(NO_CATEGORIES);
   const [editedTransaction, setEditedTransaction] =
     React.useState<Transaction | null>(null);
 
-  // Grouping reads every transaction, so it only reruns when data changes.
-  const groups = React.useMemo(
-    () => groupByDay(transactions, categories),
-    [transactions, categories],
+  // This reads every transaction, so it only reruns when data or the
+  // filter changes.
+  const { selectedIds, filterCategories, groups, count } = React.useMemo(
+    () => buildActivity({ transactions, categories, categoryIds }),
+    [transactions, categories, categoryIds],
   );
+  const isFiltered = selectedIds.size > 0;
+  // With a single category in use there is nothing to choose between.
+  const hasFilter = filterCategories.length > 1 || isFiltered;
+
+  const handleCategoryToggle = (toggledId: number): void => {
+    const next = new Set(selectedIds);
+    if (!next.delete(toggledId)) {
+      next.add(toggledId);
+    }
+    setCategoryIds(next);
+  };
 
   return (
     <section aria-label='Activity' className={SCREEN_STYLE}>
       <ScreenHeader title='Activity'>
         {transactions.length > 0 && (
           <span className={styles.count}>
-            {formatCount(transactions.length, 'transaction')}
+            {formatCount(count, 'transaction')}
           </span>
         )}
       </ScreenHeader>
-      {groups.length === 0 && (
+      {hasFilter && (
+        <CategoryFilter
+          categories={filterCategories}
+          selectedIds={selectedIds}
+          onToggle={handleCategoryToggle}
+          onClear={() => setCategoryIds(NO_CATEGORIES)}
+        />
+      )}
+      {transactions.length === 0 && (
         <EmptyState
           icon={ReceiptText}
           title='No transactions yet'
           description='Everything you add shows up here, grouped by day.'
+        />
+      )}
+      {transactions.length > 0 && groups.length === 0 && (
+        <EmptyState
+          icon={ListFilter}
+          title='Nothing in these categories'
+          description='Pick other categories, or tap All to see everything.'
         />
       )}
       {groups.slice(0, visibleDayCount).map((group) => (

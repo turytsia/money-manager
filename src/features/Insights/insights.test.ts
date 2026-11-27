@@ -60,13 +60,11 @@ describe('buildInsights', () => {
       expect(series).toEqual([
         {
           kind: TransactionKind.Income,
-          categoryLabel: undefined,
           total: 90000,
           previousTotal: 0,
         },
         {
           kind: TransactionKind.Expense,
-          categoryLabel: undefined,
           total: 4500,
           previousTotal: 2000,
         },
@@ -155,44 +153,6 @@ describe('buildInsights', () => {
     });
   });
 
-  describe('when a category filter is on', () => {
-    it('should narrow the totals and the chart to that category', () => {
-      const insights = buildInsights(createQuery({ categoryId: FOOD }));
-
-      expect(insights.series).toEqual([
-        {
-          kind: TransactionKind.Expense,
-          categoryLabel: 'Food',
-          total: 1500,
-          previousTotal: 2000,
-        },
-      ]);
-      expect(insights.bars[11].amounts).toEqual({ expense: 1500, income: 0 });
-      expect(insights.scaleMax).toBe(2000);
-    });
-
-    it('should leave the breakdown as it is', () => {
-      const { breakdown } = buildInsights(createQuery({ categoryId: FOOD }));
-
-      expect(breakdown[TransactionKind.Expense]).toHaveLength(2);
-      expect(breakdown[TransactionKind.Income]).toHaveLength(1);
-    });
-
-    it('should show only what was earned for an income category', () => {
-      const { series } = buildInsights(createQuery({ categoryId: SALARY }));
-
-      expect(series).toMatchObject([
-        { kind: TransactionKind.Income, categoryLabel: 'Salary', total: 90000 },
-      ]);
-    });
-
-    it('should show everything when the category is not known', () => {
-      const { series } = buildInsights(createQuery({ categoryId: 4242 }));
-
-      expect(series).toHaveLength(2);
-    });
-  });
-
   it('should group by day when asked to', () => {
     const insights = buildInsights(
       createQuery({ granularity: Granularity.Day }),
@@ -257,7 +217,6 @@ function createQuery(overrides: Partial<InsightsQuery> = {}): InsightsQuery {
     categories: createCatalog([]),
     granularity: Granularity.Month,
     selectedStart: null,
-    categoryId: null,
     today: TODAY,
     ...overrides,
   };

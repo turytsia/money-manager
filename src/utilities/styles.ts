@@ -39,6 +39,38 @@ export const LABEL_STYLE = css`
   color: var(--color-fg-secondary);
 `;
 
+/**
+ * A one-line text field. 16px text stops iOS from zooming the page in when
+ * the field is focused.
+ */
+export const TEXT_INPUT_STYLE = css`
+  width: 100%;
+  min-width: 0;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  outline: none;
+  background: var(--color-bg);
+  font-size: 16px;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+
+  &::placeholder {
+    color: var(--color-fg-tertiary);
+  }
+
+  &:focus {
+    border-color: var(--color-fg);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-fg) 12%, transparent);
+  }
+
+  &[aria-invalid='true'] {
+    border-color: var(--color-danger);
+  }
+`;
+
 /** Digits of equal width, so columns of numbers line up. */
 export const TABULAR_STYLE = css`
   font-variant-numeric: tabular-nums;

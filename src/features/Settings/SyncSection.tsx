@@ -8,6 +8,7 @@ import {
 } from '../../components/SyncEngineProvider/SyncEngineProvider';
 import { useToast } from '../../components/ToastProvider/ToastProvider';
 import { formatDateTime } from '../../utilities/dates';
+import { TEXT_INPUT_STYLE } from '../../utilities/styles';
 import { SyncPhase } from '../../utilities/sync/syncEngine';
 import { createSyncToken } from '../../utilities/sync/token';
 import { SettingsSection } from './SettingsSection';
@@ -34,29 +35,8 @@ const styles = {
     display: flex;
     gap: 8px;
   `,
-  // 16px text stops iOS from zooming the page in when the field is focused.
   input: css`
     flex: 1;
-    min-width: 0;
-    height: 44px;
-    padding: 0 12px;
-    border: 1px solid var(--color-border);
-    border-radius: 10px;
-    outline: none;
-    background: var(--color-bg);
-    font-size: 16px;
-    transition:
-      border-color 150ms ease,
-      box-shadow 150ms ease;
-
-    &::placeholder {
-      color: var(--color-fg-tertiary);
-    }
-
-    &:focus {
-      border-color: var(--color-fg);
-      box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-fg) 12%, transparent);
-    }
   `,
   error: css`
     color: var(--color-danger);
@@ -176,7 +156,7 @@ const ConnectForm: React.FC<ConnectFormProps> = ({
       <div className={styles.fields}>
         <input
           type='password'
-          className={styles.input}
+          className={cx(TEXT_INPUT_STYLE, styles.input)}
           value={password}
           placeholder='Sync password'
           aria-label='Sync password'
